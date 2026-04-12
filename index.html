@@ -1,0 +1,2313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DAFNE · Dynamic Assessment For National Emergencies</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+:root{
+  --bg:#07090f;--surface:#0d1117;--surface2:#111927;--border:#1c2a3a;
+  --border2:#243447;--text:#c0cfe0;--muted:#445566;--accent:#1a8fff;
+  --rVH:#ff2040;--rH:#ff7020;--rMH:#ffaa00;--rM:#ffe040;
+  --rL:#40cc70;--rVL:#2a8840;--rND:#182233;
+  --live:#00e5a0;--news:#ff9f45;--lit:#c97bff;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;display:flex;flex-direction:column;}
+
+/* HEADER */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:7px 16px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;gap:10px;flex-wrap:wrap;}
+.hdr-left{display:flex;flex-direction:column;}
+.hdr-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:#fff;letter-spacing:.04em;}
+.hdr-title em{color:var(--rVH);font-style:normal;}
+.hdr-sub{font-size:9px;color:var(--muted);letter-spacing:.07em;margin-top:1px;}
+.hdr-right{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.hlabel{font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;}
+.hbtn{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;padding:3px 9px;border-radius:2px;cursor:pointer;transition:all .15s;}
+.hbtn:hover{border-color:var(--accent);color:var(--accent);}
+.hbtn.active{background:rgba(26,143,255,.12);border-color:var(--accent);color:var(--accent);}
+.icon-btn{background:none;border:1px solid var(--border2);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;padding:3px 9px;border-radius:2px;cursor:pointer;transition:all .15s;}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent);}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--live);box-shadow:0 0 6px var(--live);display:inline-block;margin-right:4px;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+
+/* MAIN */
+.main{display:flex;flex:1;overflow:hidden;}
+.map-wrap{flex:1;position:relative;overflow:hidden;background:#07111c;}
+#map-svg{width:100%;height:100%;display:block;}
+.country{transition:opacity .1s;}
+.country:hover{opacity:.75;cursor:pointer;}
+.country.selected{stroke:#fff!important;stroke-width:1.2px!important;opacity:1!important;}
+
+/* TOOLTIP */
+.tip{position:absolute;background:rgba(10,16,26,.97);border:1px solid var(--border2);border-radius:3px;padding:7px 11px;font-size:10px;pointer-events:none;display:none;z-index:200;min-width:180px;}
+.tip-name{font-family:'Syne',sans-serif;font-size:12px;font-weight:800;color:#fff;margin-bottom:3px;}
+.tip-score{font-size:11px;margin-bottom:2px;}
+.tip-regime{font-size:9px;color:var(--muted);}
+
+/* LEGEND */
+.legend{position:absolute;bottom:12px;left:12px;background:rgba(7,9,15,.93);border:1px solid var(--border2);border-radius:3px;padding:9px 12px;font-size:10px;}
+.leg-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;}
+.leg-row{display:flex;align-items:center;gap:7px;margin-bottom:3px;}
+.leg-sq{width:10px;height:10px;border-radius:1px;flex-shrink:0;}
+.leg-range{color:var(--muted);font-size:9px;}
+
+/* SIDE PANEL */
+.panel{width:370px;flex-shrink:0;border-left:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface);overflow:hidden;}
+.p-head{padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.p-country{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:#fff;}
+.p-meta{font-size:9px;color:var(--muted);margin-top:2px;letter-spacing:.04em;}
+.p-live-row{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:9px;}
+.live-badge{padding:2px 7px;border-radius:2px;font-size:8px;font-weight:700;letter-spacing:.08em;}
+.live-badge.ok{background:rgba(0,229,160,.1);color:var(--live);border:1px solid rgba(0,229,160,.2);}
+.live-badge.loading{background:rgba(255,209,102,.1);color:var(--warn);border:1px solid rgba(255,209,102,.2);}
+.live-badge.err{background:rgba(255,107,53,.1);color:var(--rH);border:1px solid rgba(255,107,53,.2);}
+
+/* TABS */
+.p-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;}
+.p-tabs::-webkit-scrollbar{height:0;}
+.ptab{flex-shrink:0;padding:7px 10px;text-align:center;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
+.ptab:hover{color:var(--text);}
+.ptab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.p-body{flex:1;overflow-y:auto;padding:12px 14px;}
+.p-body::-webkit-scrollbar{width:3px;}
+.p-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.tpane{display:none;}
+.tpane.active{display:block;}
+
+/* PLACEHOLDER */
+.placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:7px;color:var(--muted);}
+.ph-icon{font-size:26px;margin-bottom:3px;}
+.ph-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--border2);}
+.ph-sub{font-size:10px;text-align:center;max-width:200px;line-height:1.5;}
+
+/* SCORE */
+.score-block{display:flex;align-items:center;gap:11px;margin-bottom:12px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;}
+.s-big{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;line-height:1;}
+.s-meta{flex:1;}
+.s-label{font-size:9px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;margin-bottom:2px;}
+.s-band{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:.04em;}
+.s-lambda{font-size:9px;color:var(--muted);margin-top:2px;}
+.s-live{font-size:9px;margin-top:3px;}
+
+/* HORIZON BARS */
+.hbars-wrap{margin-bottom:12px;}
+.hb-title{font-size:9px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px;}
+.hb-row{display:flex;gap:3px;align-items:flex-end;height:48px;}
+.hb-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;}
+.hb-bar{width:100%;border-radius:1px 1px 0 0;min-height:3px;position:relative;}
+.hb-ci{position:absolute;left:50%;transform:translateX(-50%);width:2px;background:rgba(255,255,255,.3);border-radius:1px;}
+.hb-lbl{font-size:8px;color:var(--muted);}
+.hb-lbl.cur{color:var(--text);}
+
+/* THRESHOLD NOTE */
+.tnote{background:rgba(26,143,255,.05);border:1px solid rgba(26,143,255,.15);border-radius:3px;padding:7px 9px;font-size:10px;color:#5a9abf;line-height:1.6;margin-bottom:12px;}
+
+/* PATHWAY */
+.pathway{font-size:10px;line-height:1.7;color:var(--text);}
+
+/* COMPONENTS */
+.comp-sec{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin:10px 0 6px;}
+.comp-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.comp-name{width:115px;font-size:9px;color:var(--muted);flex-shrink:0;}
+.comp-bg{flex:1;height:6px;background:var(--surface2);border-radius:1px;overflow:hidden;}
+.comp-fill{height:100%;border-radius:1px;transition:width .4s ease;}
+.comp-val{width:28px;text-align:right;font-size:9px;color:var(--text);}
+
+/* DATA SOURCES */
+.dsrc{font-size:9px;color:var(--muted);line-height:1.6;margin-top:4px;padding:6px 8px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);}
+.dsrc strong{color:var(--text);}
+
+/* LIVE DATA PANEL */
+.live-section{margin-bottom:14px;}
+.live-sec-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--live);letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:6px;}
+.live-card{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:8px 10px;margin-bottom:6px;}
+.live-card-label{font-size:9px;color:var(--muted);margin-bottom:3px;letter-spacing:.06em;text-transform:uppercase;}
+.live-card-val{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;}
+.live-card-src{font-size:8px;color:var(--muted);margin-top:2px;}
+.live-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;}
+.live-err{font-size:10px;color:var(--muted);font-style:italic;padding:8px;}
+
+/* NEWS FEED */
+.news-item{border:1px solid var(--border);border-radius:3px;padding:8px 10px;margin-bottom:6px;background:var(--surface2);transition:border-color .15s;}
+.news-item:hover{border-color:var(--news);}
+.news-item a{text-decoration:none;color:inherit;}
+.news-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;}
+.news-title{font-size:10px;color:var(--text);line-height:1.5;flex:1;}
+.news-module{font-size:8px;padding:1px 5px;border-radius:2px;flex-shrink:0;font-weight:700;letter-spacing:.06em;}
+.news-module.mmp{background:rgba(255,32,64,.12);color:var(--rVH);}
+.news-module.emp{background:rgba(201,123,255,.12);color:var(--lit);}
+.news-module.sfd{background:rgba(255,159,69,.12);color:var(--news);}
+.news-module.dem{background:rgba(255,209,102,.12);color:var(--rM);}
+.news-meta{font-size:8px;color:var(--muted);}
+.news-loading{font-size:10px;color:var(--muted);font-style:italic;padding:10px;}
+.news-filter{display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap;}
+.nfbtn{font-size:8px;padding:2px 7px;border-radius:2px;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);transition:all .15s;}
+.nfbtn.active{background:rgba(255,159,69,.12);border-color:var(--news);color:var(--news);}
+
+/* LITERATURE */
+.lit-item{border:1px solid var(--border);border-radius:3px;padding:9px 10px;margin-bottom:7px;background:var(--surface2);transition:border-color .15s;}
+.lit-item:hover{border-color:var(--lit);}
+.lit-item a{text-decoration:none;color:inherit;}
+.lit-title{font-size:10px;color:var(--text);line-height:1.5;margin-bottom:4px;font-weight:500;}
+.lit-authors{font-size:9px;color:var(--lit);margin-bottom:2px;}
+.lit-journal{font-size:9px;color:var(--muted);}
+.lit-tags{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;}
+.lit-tag{font-size:8px;padding:1px 5px;border-radius:2px;background:rgba(201,123,255,.1);color:var(--lit);border:1px solid rgba(201,123,255,.2);}
+.lit-doi{font-size:8px;color:var(--muted);margin-top:3px;}
+.lit-doi a{color:var(--accent);text-decoration:none;}
+.lit-doi a:hover{text-decoration:underline;}
+.lit-filter{display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap;}
+.lfbtn{font-size:8px;padding:2px 7px;border-radius:2px;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);transition:all .15s;}
+.lfbtn.active{background:rgba(201,123,255,.12);border-color:var(--lit);color:var(--lit);}
+
+/* AI PANEL */
+.ai-wrap{display:flex;flex-direction:column;gap:8px;}
+.ai-msgs{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+.ai-msgs::-webkit-scrollbar{width:3px;}
+.ai-msgs::-webkit-scrollbar-thumb{background:var(--border2);}
+.ai-msg{padding:8px 10px;border-radius:3px;font-size:11px;line-height:1.65;}
+.ai-msg.sys{background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:9px;}
+.ai-msg.usr{background:rgba(26,143,255,.08);border:1px solid rgba(26,143,255,.2);color:var(--accent);}
+.ai-msg.bot{background:var(--surface2);border:1px solid var(--border2);color:var(--text);}
+.ai-msg.loading{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);font-style:italic;}
+.ai-row{display:flex;gap:6px;margin-top:3px;}
+.ai-inp{flex:1;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:7px 9px;border-radius:2px;outline:none;transition:border-color .15s;}
+.ai-inp:focus{border-color:var(--accent);}
+.ai-inp::placeholder{color:var(--muted);}
+.ai-send{background:var(--accent);border:none;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px;padding:7px 11px;border-radius:2px;cursor:pointer;transition:opacity .15s;}
+.ai-send:hover{opacity:.85;}
+.ai-send:disabled{opacity:.35;cursor:not-allowed;}
+.ai-disc{font-size:9px;color:var(--muted);line-height:1.5;padding:5px 0;border-top:1px solid var(--border);margin-top:2px;}
+.api-status{font-size:9px;padding:2px 6px;border-radius:2px;display:inline-block;}
+.api-status.ok{background:rgba(64,204,112,.12);color:#40cc70;border:1px solid rgba(64,204,112,.25);}
+.api-status.no{background:rgba(255,107,53,.1);color:var(--rH);border:1px solid rgba(255,107,53,.2);}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
+.modal-bg.hidden{display:none;}
+.modal{background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:22px;width:440px;max-width:95vw;}
+.modal h2{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#fff;margin-bottom:4px;}
+.modal p{font-size:10px;color:var(--muted);line-height:1.65;margin-bottom:12px;}
+.modal label{font-size:10px;color:var(--muted);display:block;margin-bottom:4px;letter-spacing:.06em;text-transform:uppercase;}
+.modal input,.modal select{width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:8px 10px;border-radius:2px;outline:none;margin-bottom:12px;transition:border-color .15s;}
+.modal input:focus,.modal select:focus{border-color:var(--accent);}
+.modal-btns{display:flex;gap:7px;justify-content:flex-end;margin-top:14px;}
+.modal-save{background:var(--accent);border:none;color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;padding:7px 18px;border-radius:2px;cursor:pointer;}
+.modal-cancel{background:none;border:1px solid var(--border2);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;padding:7px 14px;border-radius:2px;cursor:pointer;}
+.gh-note{background:rgba(64,204,112,.05);border:1px solid rgba(64,204,112,.15);border-radius:3px;padding:8px 10px;font-size:10px;color:#4a9a6a;line-height:1.65;margin-top:8px;}
+
+/* ── HISTORICAL SLIDER ── */
+.slider-wrap{padding:10px 0 6px;}
+.slider-title{font-size:9px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;}
+.slider-year{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--accent);}
+#hist-range{width:100%;appearance:none;-webkit-appearance:none;height:4px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer;margin-bottom:4px;}
+#hist-range::-webkit-slider-thumb{appearance:none;width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;box-shadow:0 0 6px rgba(26,143,255,.4);}
+#hist-range::-moz-range-thumb{width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;border:none;}
+.hist-ticks{display:flex;justify-content:space-between;font-size:8px;color:var(--muted);}
+.hist-chart-wrap{margin-top:10px;margin-bottom:12px;}
+.hist-chart-title{font-size:9px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px;}
+#hist-canvas{width:100%;height:140px;border-radius:3px;background:var(--surface2);border:1px solid var(--border);display:block;}
+.hist-legend{display:flex;gap:12px;margin-top:5px;font-size:9px;flex-wrap:wrap;}
+.hist-leg-item{display:flex;align-items:center;gap:5px;}
+.hist-leg-dot{width:8px;height:3px;border-radius:1px;}
+.seshat-wrap{margin-top:14px;padding-top:12px;border-top:1px solid var(--border);}
+.seshat-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.seshat-badge{background:rgba(201,123,255,.12);color:var(--lit);border:1px solid rgba(201,123,255,.2);font-size:8px;padding:1px 5px;border-radius:2px;font-weight:700;letter-spacing:.06em;}
+.seshat-crisis{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:7px 9px;margin-bottom:5px;display:flex;align-items:flex-start;gap:8px;}
+.seshat-sev{width:22px;height:22px;border-radius:2px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:10px;}
+.seshat-info{flex:1;}
+.seshat-crisis-name{font-size:10px;color:var(--text);line-height:1.4;font-weight:500;}
+.seshat-polity{font-size:9px;color:var(--muted);margin-top:2px;}
+.seshat-none{font-size:10px;color:var(--muted);font-style:italic;padding:6px 0;}
+
+/* ── COMPARISON MODE ── */
+.compare-bar{position:absolute;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;z-index:50;flex-wrap:wrap;}
+.compare-bar.hidden{display:none;}
+.compare-title{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;flex-shrink:0;}
+.compare-slots{display:flex;gap:6px;flex:1;flex-wrap:wrap;}
+.compare-slot{display:flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border2);border-radius:3px;padding:3px 8px;font-size:10px;cursor:pointer;}
+.compare-slot .slot-name{font-family:'Syne',sans-serif;font-weight:700;}
+.compare-slot .slot-rm{color:var(--muted);font-size:11px;margin-left:3px;}
+.compare-slot .slot-rm:hover{color:var(--rH);}
+.compare-slot.empty{border-style:dashed;color:var(--muted);cursor:default;}
+.compare-add{background:var(--accent);border:none;color:#fff;font-family:'JetBrains Mono',monospace;font-size:9px;padding:4px 10px;border-radius:2px;cursor:pointer;flex-shrink:0;}
+.compare-view{background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:9px;padding:4px 10px;border-radius:2px;cursor:pointer;flex-shrink:0;transition:all .15s;}
+.compare-view:hover{border-color:var(--accent);color:var(--accent);}
+.compare-clear{background:none;border:none;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:9px;cursor:pointer;padding:4px 8px;}
+.compare-clear:hover{color:var(--rH);}
+.pin-btn{background:rgba(26,143,255,.1);border:1px solid rgba(26,143,255,.2);color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 9px;border-radius:2px;cursor:pointer;margin-top:6px;transition:all .15s;display:inline-block;}
+.pin-btn:hover{background:rgba(26,143,255,.2);}
+.pin-btn.pinned{background:rgba(255,32,64,.1);border-color:rgba(255,32,64,.3);color:var(--rVH);}
+
+/* ── COMPARE OVERLAY ── */
+.compare-overlay{position:fixed;inset:0;background:rgba(7,9,15,.96);z-index:500;display:flex;flex-direction:column;backdrop-filter:blur(4px);}
+.compare-overlay.hidden{display:none;}
+.co-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.co-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#fff;}
+.co-close{background:none;border:1px solid var(--border2);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 14px;border-radius:2px;cursor:pointer;}
+.co-close:hover{border-color:var(--rH);color:var(--rH);}
+.co-body{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px;overflow-y:auto;}
+.co-body.three{grid-template-columns:1fr 1fr 1fr;}
+.co-country{background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+.co-country-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.co-country-name{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#fff;}
+.co-score{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;}
+.co-body-inner{padding:12px 14px;}
+#radar-canvas{width:100%;height:240px;display:block;margin:0 auto;}
+.co-full{grid-column:1/-1;}
+.traj-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;}
+#traj-canvas{width:100%;height:160px;display:block;background:var(--surface2);border:1px solid var(--border);border-radius:3px;}
+
+*{scrollbar-width:thin;scrollbar-color:var(--border2) transparent;}
+</style>
+</head>
+<body>
+
+<!-- MODAL -->
+<div class="modal-bg hidden" id="modal-bg">
+  <div class="modal">
+    <h2>⚙ API Configuration</h2>
+    <p>Keys are stored in browser memory only and never transmitted except directly to the respective service.</p>
+    <label>Groq API Key — AI Analysis panel</label>
+    <input type="password" id="api-key-input" placeholder="gsk_…" autocomplete="off"/>
+    <label>Groq Model</label>
+    <select id="model-select">
+      <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (recommended)</option>
+      <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile</option>
+      <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+      <option value="gemma2-9b-it">gemma2-9b-it (fast)</option>
+    </select>
+    <label>NewsAPI.org Key — optional, extends news feed coverage</label>
+    <input type="password" id="newsapi-key-input" placeholder="Free key at newsapi.org" autocomplete="off"/>
+    <div style="font-size:9px;color:var(--muted);margin-top:-8px;margin-bottom:12px;line-height:1.6;">
+      The News Feed uses Reuters, AP, BBC, The Economist, Bloomberg, Foreign Policy, CNN, Noema, and more — no key needed. A NewsAPI.org key (free, 100 req/day) extends coverage further.
+    </div>
+    <div class="gh-note">🔗 <strong>GitHub Pages ready:</strong> Single HTML file — upload as index.html, share the link. Each colleague enters their own keys.</div>
+    <div class="modal-btns">
+      <button class="modal-cancel" id="modal-cancel">Cancel</button>
+      <button class="modal-save" id="modal-save">Save & Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="hdr-title">DAFNE <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">Dynamic Assessment For National Emergencies</span></div>
+    <div class="hdr-sub">SDT MONITOR · STRUCTURAL DEMOGRAPHIC INSTABILITY INDEX · λ-BLENDED REGIME MODEL</div>
+  </div>
+  <div class="hdr-right">
+    <span class="hlabel">Horizon →</span>
+    <button class="hbtn active" data-hi="0">Now</button>
+    <button class="hbtn" data-hi="1">+5yr</button>
+    <button class="hbtn" data-hi="2">+10yr</button>
+    <button class="hbtn" data-hi="3">+20yr</button>
+    <button class="hbtn" data-hi="4">+50yr</button>
+    <span id="api-badge" class="api-status no">NO KEY</span>
+    <button class="icon-btn" id="open-settings">⚙ API KEY</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="map-wrap" id="map-wrap">
+    <svg id="map-svg"></svg>
+    <div class="tip" id="tip">
+      <div class="tip-name" id="tt-name"></div>
+      <div class="tip-score" id="tt-score"></div>
+      <div class="tip-regime" id="tt-regime"></div>
+    </div>
+    <div class="legend">
+      <div class="leg-title">SDT Instability Index</div>
+      <div class="leg-row"><div class="leg-sq" style="background:var(--rVH)"></div><span>Very High</span><span class="leg-range">&nbsp;≥ 0.75</span></div>
+      <div class="leg-row"><div class="leg-sq" style="background:var(--rH)"></div><span>High&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="leg-range">&nbsp;0.55–0.75</span></div>
+      <div class="leg-row"><div class="leg-sq" style="background:var(--rMH)"></div><span>Med-High</span><span class="leg-range">&nbsp;0.40–0.55</span></div>
+      <div class="leg-row"><div class="leg-sq" style="background:var(--rM)"></div><span>Medium&nbsp;</span><span class="leg-range">&nbsp;0.25–0.40</span></div>
+      <div class="leg-row"><div class="leg-sq" style="background:var(--rL)"></div><span>Low&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="leg-range">&nbsp;0.10–0.25</span></div>
+      <div class="leg-row"><div class="leg-sq" style="background:var(--rVL)"></div><span>Very Low</span><span class="leg-range">&nbsp;&lt; 0.10</span></div>
+      <div class="leg-row"><div class="leg-sq" style="background:var(--rND)"></div><span>No Data</span></div>
+    </div>
+  </div>
+
+  <!-- SIDE PANEL -->
+  <div class="panel">
+    <div id="ph" class="p-body">
+      <div class="placeholder">
+        <div class="ph-icon">🌍</div>
+        <div class="ph-title">SELECT A COUNTRY</div>
+        <div class="ph-sub">Click any country on the map to view its SDT instability breakdown, live data, news feed, and literature</div>
+      </div>
+    </div>
+    <div id="pd" style="display:none;flex-direction:column;height:100%;overflow:hidden;">
+      <div class="p-head">
+        <div class="p-country" id="p-cname">—</div>
+        <div class="p-meta" id="p-cmeta">—</div>
+        <div class="p-live-row">
+          <span id="wb-badge" class="live-badge loading">LOADING LIVE DATA…</span>
+          <span id="wb-year" style="font-size:9px;color:var(--muted);"></span>
+        </div>
+      </div>
+      <div class="p-tabs">
+        <div class="ptab active" data-tab="idx">Index</div>
+        <div class="ptab" data-tab="live">Live Data</div>
+        <div class="ptab" data-tab="news">News Feed</div>
+        <div class="ptab" data-tab="cmp">Components</div>
+        <div class="ptab" data-tab="dat">Sources</div>
+        <div class="ptab" data-tab="lit">Literature</div>
+        <div class="ptab" data-tab="ai">AI</div>
+        <div class="ptab" data-tab="hist">History</div>
+      </div>
+      <div class="p-body">
+        <div class="tpane active" id="tp-idx">
+          <div class="score-block">
+            <div class="s-big" id="s-big">—</div>
+            <div class="s-meta">
+              <div class="s-label">SDT Instability Index</div>
+              <div class="s-band" id="s-band">—</div>
+              <div class="s-lambda" id="s-lambda">—</div>
+              <div class="s-live" id="s-live-note" style="color:var(--live);font-size:8px;"></div>
+            </div>
+          </div>
+          <div class="hbars-wrap">
+            <div class="hb-title">Projected Instability by Horizon (95% CI)</div>
+            <div class="hb-row" id="hb-row"></div>
+            <div style="display:flex;gap:3px;margin-top:3px;" id="hb-lbls"></div>
+          </div>
+          <div class="tnote" id="tnote">—</div>
+          <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Dominant Pathway</div>
+          <div class="pathway" id="pathway">—</div>
+        </div>
+
+        <div class="tpane" id="tp-live">
+          <div id="live-content"><div class="live-err">Loading live World Bank data…</div></div>
+        </div>
+
+        <div class="tpane" id="tp-news">
+          <div style="font-size:9px;color:var(--muted);margin-bottom:8px;line-height:1.6;">
+            SDT-relevant news from <strong style="color:var(--text)">Reuters · AP · BBC · The Economist · Bloomberg · Foreign Policy · CNN · Noema</strong> (live, no key) + <strong style="color:var(--text)">NewsAPI</strong> (optional key in ⚙). Articles tagged by MMP · EMP · SFD · DEM module. Coverage from 2023–present.
+          </div>
+          <div class="news-filter" id="news-filter">
+            <button class="nfbtn active" data-nf="all">All</button>
+            <button class="nfbtn" data-nf="mmp">MMP</button>
+            <button class="nfbtn" data-nf="emp">EMP</button>
+            <button class="nfbtn" data-nf="sfd">SFD</button>
+            <button class="nfbtn" data-nf="dem">DEM</button>
+          </div>
+          <div id="news-content"><div class="news-loading">Select a country to load news feed.</div></div>
+        </div>
+
+        <div class="tpane" id="tp-cmp"><div id="cmp-content"></div></div>
+
+        <div class="tpane" id="tp-dat"><div id="dat-content"></div></div>
+
+        <div class="tpane" id="tp-lit">
+          <div style="font-size:9px;color:var(--muted);margin-bottom:8px;line-height:1.6;">
+            Peer-reviewed publications relevant to this country's SDT analysis. Authors: Turchin, Orlandi, Hoyer, Holder, Bennett, Goldstone, Mark.
+          </div>
+          <div class="lit-filter" id="lit-filter">
+            <button class="lfbtn active" data-lf="all">All</button>
+            <button class="lfbtn" data-lf="mmp">MMP</button>
+            <button class="lfbtn" data-lf="emp">EMP</button>
+            <button class="lfbtn" data-lf="sfd">SFD</button>
+            <button class="lfbtn" data-lf="theory">Theory</button>
+          </div>
+          <div id="lit-content"></div>
+        </div>
+
+        <div class="tpane" id="tp-hist">
+          <div id="hist-content"></div>
+        </div>
+        <div class="tpane" id="tp-ai">
+          <div class="ai-wrap">
+            <div class="ai-msgs" id="ai-msgs">
+              <div class="ai-msg sys">DAFNE-AI reasons exclusively within Structural Demographic Theory. It will explain data sources, proxies, and live data updates when asked.</div>
+            </div>
+            <div class="ai-row">
+              <input class="ai-inp" id="ai-inp" placeholder="Ask about this country's SDT dynamics…"/>
+              <button class="ai-send" id="ai-send">ASK</button>
+            </div>
+            <div class="ai-disc">⚠ Constrained to SDT framework. Data is modelled + live World Bank. See Sources tab for details.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- COMPARE BAR — inside map-wrap via JS move, or placed here as sibling -->
+<div class="compare-bar hidden" id="compare-bar">
+  <div class="compare-title">Compare</div>
+  <div class="compare-slots" id="compare-slots"></div>
+  <button class="compare-view" id="compare-view-btn" onclick="openCompare()">📊 View Comparison</button>
+  <button class="compare-clear" id="compare-clear-btn" onclick="clearCompare()">✕ Clear</button>
+</div>
+
+<!-- COMPARE OVERLAY -->
+<div class="compare-overlay hidden" id="compare-overlay">
+  <div class="co-header">
+    <div class="co-title">📊 SDT Country Comparison</div>
+    <button class="co-close" onclick="document.getElementById('compare-overlay').classList.add('hidden')">✕ Close</button>
+  </div>
+  <div class="co-body" id="co-body">
+    <!-- Filled dynamically -->
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// LITERATURE DATABASE — curated, author-verified
+// ═══════════════════════════════════════════════════════
+const LITERATURE = [
+  {
+    id:"turchin2010",
+    title:"Political instability may be a contributor in the coming decade",
+    authors:"Turchin, P.",
+    journal:"Nature 463 (2010)",
+    doi:"10.1038/463608a",
+    url:"https://doi.org/10.1038/463608a",
+    modules:["theory","mmp","sfd"],
+    countries:["all"],
+    abstract:"Turchin forecasts rising political instability in the US and other developed nations by 2020 using SDT's secular cycle model — a forecast subsequently validated."
+  },
+  {
+    id:"orlandi2023qing",
+    title:"Structural-demographic analysis of the Qing Dynasty (1644–1912) collapse in China",
+    authors:"Orlandi, G., Hoyer, D., Zhao, H., Bennett, J.S., Benam, M., Kohn, K., Turchin, P.",
+    journal:"PLOS ONE 18(8) (2023): e0289748",
+    doi:"10.1371/journal.pone.0289748",
+    url:"https://doi.org/10.1371/journal.pone.0289748",
+    modules:["theory","emp","mmp","sfd"],
+    countries:["CHN"],
+    abstract:"Full SDT analysis of China's Qing collapse — quantifies elite overproduction, fiscal stress, and mass immiseration cycles. Directly applicable to interpreting contemporary Chinese PSI trajectory."
+  },
+  {
+    id:"turchin2020retro",
+    title:"The 2010 structural-demographic forecast for the 2010–2020 decade: A retrospective assessment",
+    authors:"Turchin, P., Korotayev, A.",
+    journal:"PLOS ONE 15(8) (2020): e0237458",
+    doi:"10.1371/journal.pone.0237458",
+    url:"https://doi.org/10.1371/journal.pone.0237458",
+    modules:["theory","mmp","emp","sfd"],
+    countries:["USA","GBR","FRA","DEU"],
+    abstract:"Retrospective validation of Turchin's 2010 SDT forecast — confirms the model's predictive accuracy across developed nations. Foundation for DAFNE's Elite/Fiscal pathway."
+  },
+  {
+    id:"turchin2016ages",
+    title:"Ages of Discord: A Structural-Demographic Analysis of American History",
+    authors:"Turchin, P.",
+    journal:"Beresta Books (2016)",
+    doi:null,
+    url:"https://www.amazon.com/Ages-Discord-Structural-Demographic-American-History/dp/0996139540",
+    modules:["theory","mmp","emp","sfd"],
+    countries:["USA"],
+    abstract:"The foundational SDT monograph for developed nations — introduces the wealth pump, elite overproduction, and counter-elite competition mechanisms that underpin DAFNE's Elite/Fiscal pathway."
+  },
+  {
+    id:"goldstone2017",
+    title:"Demographic Structural Theory: 25 Years On",
+    authors:"Goldstone, J.A.",
+    journal:"Cliodynamics 8(2) (2017)",
+    doi:"10.21237/C7clio8237450",
+    url:"https://doi.org/10.21237/C7clio8237450",
+    modules:["theory"],
+    countries:["all"],
+    abstract:"A comprehensive review of SDT's empirical record across 25 years — assesses which mechanisms have held up, which require refinement, and where the theory applies cross-culturally."
+  },
+  {
+    id:"holder2024polycrisis",
+    title:"The Spectrum of (Poly)Crisis: exploring polycrises of the past to better understand our current and future risks",
+    authors:"Holder, S.L., Ainsworth, R., Aldrich, D., Bennett, J.S., Feinman, G., Mark, S., Orlandi, G. et al.",
+    journal:"Preprint (2024)",
+    doi:null,
+    url:"https://osf.io/preprints/socarxiv/",
+    modules:["theory","sfd","mmp"],
+    countries:["all"],
+    abstract:"Uses Seshat historical data to analyse how multiple simultaneous crises interact — directly relevant to DAFNE's Consequence Simulator layer and the polycrisis risk interpretation of high PSI scores."
+  },
+  {
+    id:"mark2025polycrisis",
+    title:"Understanding polycrisis: definitions, applications, and responses",
+    authors:"Mark, S., Holder, S., Hoyer, D., Schoonover, R., Aldrich, D.P.",
+    journal:"Global Sustainability 8: e35 (2025)",
+    doi:"10.1017/sus.2025.10018",
+    url:"https://doi.org/10.1017/sus.2025.10018",
+    modules:["theory","sfd"],
+    countries:["all"],
+    abstract:"Provides a formal framework for understanding polycrisis — the co-occurrence of multiple systemic stressors. Directly relevant to interpreting countries where MMP, EMP, and SFD are simultaneously elevated."
+  },
+  {
+    id:"hoyer2025crises",
+    title:"All Crises are Unhappy in Their Own Way: The Role of Societal Instability in Shaping the Past",
+    authors:"Hoyer, D., Holder, S., Bennett, J.S. et al.",
+    journal:"Social Science History (2025)",
+    doi:"10.1017/ssh.2025.10113",
+    url:"https://doi.org/10.1017/ssh.2025.10113",
+    modules:["theory","mmp","emp","sfd"],
+    countries:["all"],
+    abstract:"Cross-historical analysis of how societal instability manifests differently across contexts — foundational for interpreting why the same PSI score can mean different things in different countries."
+  },
+  {
+    id:"orlandi2025japan",
+    title:"A Structural-Demographic Analysis of Japan: 1945–2050",
+    authors:"Orlandi, G., Turchin, P.",
+    journal:"Working paper (2025)",
+    doi:null,
+    url:null,
+    modules:["theory","emp","sfd","mmp"],
+    countries:["JPN"],
+    abstract:"The first forward-looking SDT analysis of Japan. Documents rising EMP (PhD-to-positions ratio approaching 20, ultra-wealthy share growth), high SFD (debt/GDP ~260%), and declining-but-present MMP via non-regular employment (36.7%). PSI projected to rise through 2050. Directly grounds DAFNE's Japan assessment."
+  }
+];
+
+// ═══════════════════════════════════════════════════════
+// SDT COUNTRY DATA — expanded to 80+ countries
+// ═══════════════════════════════════════════════════════
+const D = {
+  // ── NORTH AMERICA ──
+  "USA":{ name:"United States",λ:0.97,scores:[0.68,0.72,0.75,0.70,0.45],ci:[0.06,0.08,0.10,0.12,0.18],T:{rw:0.72,ep:0.75,fs:0.55,lg:0.68},K:{yb:0.18,u:0.83,ybu:0.03,yug:4},wb:"USA",
+    proxies:{rw:"Census Bureau median household income ÷ BEA GDP per capita. Direct.",ep:"BLS/NCES degree completion rate vs labour market absorption.",fs:"OMB federal debt-to-GDP. Direct.",lg:"Gallup institutional trust + ACLED protest events."},
+    note:"All four Elite/Fiscal indicators elevated. Turchin's secular cycle model places the US in a disintegrative phase circa 2010–2020. Elite overproduction (credential inflation) and relative wage compression are the dominant drivers."},
+  "CAN":{ name:"Canada",λ:0.96,scores:[0.35,0.38,0.40,0.35,0.28],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.38,ep:0.45,fs:0.42,lg:0.28},K:{yb:0.17,u:0.82,ybu:0.03,yug:5},wb:"CAN",
+    proxies:{rw:"Statistics Canada median employment income ÷ GDP per capita.",ep:"Post-secondary credential attainment vs labour market absorption.",fs:"Dept. of Finance debt-to-GDP.",lg:"Edelman Trust Barometer + ACLED."},
+    note:"Moderate elite overproduction; strong institutional legitimacy buffers. Fiscal position sustainable."},
+  "MEX":{ name:"Mexico",λ:0.55,scores:[0.62,0.65,0.63,0.58,0.42],ci:[0.07,0.09,0.11,0.13,0.17],T:{rw:0.60,ep:0.55,fs:0.48,lg:0.72},K:{yb:0.28,u:0.81,ybu:0.05,yug:18},wb:"MEX",
+    proxies:{rw:"INEGI median labour income ÷ GDP per capita. Direct.",ep:"Tertiary enrolment rate minus formal-sector job creation.",fs:"Hacienda public debt-to-GDP.",lg:"ACLED + Latinobarómetro."},
+    note:"λ=0.55: both pathways active. Korotayev channel in rural-to-urban migration corridors; Elite/Fiscal in cartel-state legitimacy collapse."},
+
+  // ── SOUTH AMERICA ──
+  "BRA":{ name:"Brazil",λ:0.60,scores:[0.55,0.58,0.60,0.55,0.38],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.58,ep:0.62,fs:0.65,lg:0.60},K:{yb:0.26,u:0.88,ybu:0.03,yug:14},wb:"BRA",
+    proxies:{rw:"PNAD median wage ÷ GDP per capita (IBGE).",ep:"Higher education enrolment vs formal job creation.",fs:"STN Brazil debt-to-GDP.",lg:"Latinobarómetro + ACLED."},
+    note:"Fiscal stress is the dominant Elite/Fiscal driver. High urbanization means demographic absorption risk is moderate."},
+  "ARG":{ name:"Argentina",λ:0.72,scores:[0.65,0.68,0.65,0.58,0.40],ci:[0.06,0.08,0.09,0.11,0.15],T:{rw:0.70,ep:0.65,fs:0.80,lg:0.62},K:{yb:0.22,u:0.93,ybu:0.02,yug:8},wb:"ARG",
+    proxies:{rw:"EPH median wage ÷ GDP per capita (INDEC).",ep:"University graduation vs private-sector employment.",fs:"IMF gross debt-to-GDP. Serial sovereign debt crises are direct fiscal stress.",lg:"Latinobarómetro + ACLED."},
+    note:"Fiscal stress (sovereign debt crisis dynamics) is the primary driver. Relative wage compression severe."},
+  "COL":{ name:"Colombia",λ:0.50,scores:[0.52,0.55,0.55,0.48,0.35],ci:[0.07,0.09,0.11,0.13,0.17],T:{rw:0.50,ep:0.48,fs:0.44,lg:0.60},K:{yb:0.27,u:0.82,ybu:0.05,yug:20},wb:"COL",
+    proxies:{rw:"GEIH median wage ÷ GDP per capita (DANE).",ep:"SENA/MEN tertiary enrolment vs DANE formal employment.",fs:"Min. Hacienda debt-to-GDP.",lg:"ACLED + Latinobarómetro."},
+    note:"λ=0.50: transitional. Peace dividend has partially absorbed demographic risks. Both channels moderately active."},
+  "VEN":{ name:"Venezuela",λ:0.52,scores:[0.82,0.78,0.72,0.62,0.45],ci:[0.05,0.07,0.09,0.11,0.16],T:{rw:0.85,ep:0.70,fs:0.95,lg:0.90},K:{yb:0.28,u:0.88,ybu:0.04,yug:12},wb:"VEN",
+    proxies:{rw:"BCV real wage index ÷ GDP per capita. Post-2018: IMF estimates. PROXY.",ep:"INE tertiary graduates vs formal employment. Post-2015: ILO estimates.",fs:"IMF/ECLAC debt proxy. Official data unavailable post-2017.",lg:"ACLED + Freedom House."},
+    note:"All Elite/Fiscal indicators in critical range. State breakdown dynamics active."},
+  "PER":{ name:"Peru",λ:0.45,scores:[0.48,0.52,0.55,0.50,0.35],ci:[0.07,0.09,0.11,0.13,0.17],T:{rw:0.48,ep:0.44,fs:0.38,lg:0.58},K:{yb:0.28,u:0.79,ybu:0.06,yug:22},wb:"PER",
+    proxies:{rw:"ENAHO median wage ÷ GDP per capita (INEI).",ep:"INEI higher education vs MTPE formal employment.",fs:"MEF debt-to-GDP.",lg:"JNE electoral volatility + ACLED."},
+    note:"λ=0.45: Demographic-leaning. Youth in highland areas migrating to coastal cities. Political fragmentation amplifies legitimacy stress."},
+  "CHL":{ name:"Chile",λ:0.78,scores:[0.42,0.45,0.48,0.42,0.30],ci:[0.05,0.07,0.08,0.10,0.14],T:{rw:0.45,ep:0.50,fs:0.35,lg:0.42},K:{yb:0.20,u:0.90,ybu:0.02,yug:7},wb:"CHL",
+    proxies:{rw:"CASEN median wage ÷ GDP per capita (INE).",ep:"CNED tertiary enrolment vs CMF employment.",fs:"DIPRES debt-to-GDP.",lg:"ACLED 2019–2021 + LAPOP trust."},
+    note:"2019 social explosion fits SDT: elite overproduction + relative wage compression despite macroeconomic growth. Fiscal position strong."},
+  "BOL":{ name:"Bolivia",λ:0.35,scores:[0.48,0.50,0.52,0.48,0.35],ci:[0.07,0.09,0.11,0.13,0.17],T:{rw:0.48,ep:0.42,fs:0.40,lg:0.52},K:{yb:0.30,u:0.72,ybu:0.08,yug:22},wb:"BOL",
+    proxies:{rw:"MECOVI household survey ÷ GDP per capita. PROXY.",ep:"CEUB graduates vs INE labour surveys.",fs:"BCB/IMF debt-to-GDP.",lg:"Latinobarómetro + ACLED."},
+    note:"λ=0.35: mixed transitional. Active demographic channel in highland-to-lowland migration. Political polarisation elevates legitimacy stress."},
+  "ECU":{ name:"Ecuador",λ:0.42,scores:[0.50,0.52,0.55,0.50,0.38],ci:[0.07,0.09,0.11,0.13,0.17],T:{rw:0.50,ep:0.45,fs:0.48,lg:0.55},K:{yb:0.28,u:0.65,ybu:0.10,yug:24},wb:"ECU",
+    proxies:{rw:"ENEMDU household survey ÷ GDP per capita. PROXY.",ep:"SENESCYT graduates vs BCE formal employment.",fs:"MEF/IMF debt-to-GDP.",lg:"ACLED + Latinobarómetro."},
+    note:"Mixed regime. Growing urban violence and drug-cartel penetration of state are legitimacy stress signals in SDT terms."},
+
+  // ── EUROPE ──
+  "GBR":{ name:"United Kingdom",λ:0.97,scores:[0.55,0.58,0.60,0.55,0.38],ci:[0.05,0.07,0.09,0.11,0.15],T:{rw:0.60,ep:0.62,fs:0.52,lg:0.52},K:{yb:0.17,u:0.84,ybu:0.03,yug:3},wb:"GBR",
+    proxies:{rw:"ONS median earnings ÷ GDP per capita. Direct.",ep:"HESA higher education vs ONS labour demand.",fs:"OBR debt-to-GDP.",lg:"Ipsos trust + ACLED."},
+    note:"Elite overproduction and wage compression elevated. Post-Brexit legitimacy fragmentation amplifies. Turchin's 50-year cycle near a peak."},
+  "FRA":{ name:"France",λ:0.98,scores:[0.52,0.55,0.55,0.48,0.35],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.55,ep:0.60,fs:0.58,lg:0.52},K:{yb:0.18,u:0.82,ybu:0.03,yug:3},wb:"FRA",
+    proxies:{rw:"INSEE median wage ÷ GDP per capita. Direct.",ep:"MESRI graduates vs DARES labour demand.",fs:"INSEE debt-to-GDP.",lg:"DREES trust + ACLED Gilets Jaunes events."},
+    note:"Grandes écoles credential inflation and relative wage stagnation. Yellow Vest dynamics fit the wealth pump mechanism."},
+  "DEU":{ name:"Germany",λ:0.98,scores:[0.30,0.32,0.38,0.42,0.35],ci:[0.04,0.05,0.07,0.09,0.13],T:{rw:0.28,ep:0.32,fs:0.25,lg:0.30},K:{yb:0.15,u:0.78,ybu:0.03,yug:2},wb:"DEU",
+    proxies:{rw:"Destatis median wage ÷ GDP per capita. Direct.",ep:"Destatis Hochschulstatistik vs IAB labour demand.",fs:"Bundesbank debt-to-GDP.",lg:"Allensbach trust + ACLED."},
+    note:"Among the lowest Elite/Fiscal stress indicators in the dataset. Rising elite fragmentation post-2020 bears monitoring."},
+  "ITA":{ name:"Italy",λ:0.97,scores:[0.55,0.58,0.60,0.52,0.38],ci:[0.05,0.07,0.09,0.11,0.15],T:{rw:0.58,ep:0.62,fs:0.68,lg:0.55},K:{yb:0.16,u:0.72,ybu:0.04,yug:2},wb:"ITA",
+    proxies:{rw:"ISTAT median wage ÷ GDP per capita.",ep:"MIUR graduates vs ISTAT labour demand.",fs:"MEF/Banca d'Italia debt-to-GDP (~140%).",lg:"Eurobarometer + ACLED."},
+    note:"Fiscal stress (debt/GDP ~140%) is the critical Elite/Fiscal driver. Elite overproduction in a stagnant labour market."},
+  "ESP":{ name:"Spain",λ:0.97,scores:[0.48,0.50,0.52,0.45,0.33],ci:[0.05,0.07,0.08,0.10,0.14],T:{rw:0.52,ep:0.58,fs:0.55,lg:0.45},K:{yb:0.16,u:0.80,ybu:0.03,yug:2},wb:"ESP",
+    proxies:{rw:"INE encuesta de salarios ÷ GDP per capita.",ep:"MEC/SEPE graduate vs employment absorption.",fs:"Banco de España debt-to-GDP.",lg:"CIS barometer + ACLED."},
+    note:"Credential inflation with youth unemployment is an elite overproduction signal. Regional legitimacy fragmentation (Catalonia) elevates index."},
+  "POL":{ name:"Poland",λ:0.92,scores:[0.35,0.38,0.42,0.40,0.30],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.35,ep:0.40,fs:0.38,lg:0.38},K:{yb:0.17,u:0.62,ybu:0.06,yug:4},wb:"POL",
+    proxies:{rw:"GUS median wages ÷ GDP per capita.",ep:"MNiSW graduates vs GUS labour demand.",fs:"NBP/MF debt-to-GDP.",lg:"CBOS trust surveys + ACLED."},
+    note:"Institutional legitimacy erosion post-2015 is the primary stress driver."},
+  "UKR":{ name:"Ukraine",λ:0.80,scores:[0.78,0.80,0.75,0.65,0.48],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.80,ep:0.72,fs:0.82,lg:0.85},K:{yb:0.18,u:0.70,ybu:0.05,yug:6},wb:"UKR",
+    proxies:{rw:"Ukrstat median wage ÷ GDP per capita. War period: IMF WEO proxy.",ep:"MES Ukraine graduation rate vs State Employment Service. Post-2022 estimated.",fs:"IMF programme debt-to-GDP.",lg:"ACLED war events + Razumkov Centre surveys."},
+    note:"Active state crisis — all Elite/Fiscal indicators at maximum. War amplifies but does not solely explain the structural pressures which predate 2022."},
+  "RUS":{ name:"Russia",λ:0.92,scores:[0.72,0.75,0.78,0.72,0.52],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.75,ep:0.70,fs:0.62,lg:0.78},K:{yb:0.18,u:0.75,ybu:0.04,yug:5},wb:"RUS",
+    proxies:{rw:"Rosstat median wage ÷ GDP per capita. Cross-checked ILO.",ep:"Rosstat higher education completions vs HSE labour demand.",fs:"Minfin debt-to-GDP. Sanctions-era estimates cross-checked IMF.",lg:"Levada Center + ACLED + OVD-Info."},
+    note:"Elite fragmentation (counter-elite purging), wage compression, legitimacy crisis all active. Disintegrative phase indicators present."},
+  "TUR":{ name:"Turkey",λ:0.62,scores:[0.65,0.68,0.70,0.65,0.45],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.65,ep:0.60,fs:0.62,lg:0.70},K:{yb:0.26,u:0.77,ybu:0.06,yug:16},wb:"TUR",
+    proxies:{rw:"TÜİK median wage ÷ GDP per capita. OECD earnings cross-checked.",ep:"YÖK graduates vs İŞKUR formal absorption.",fs:"Hazine debt-to-GDP. Lira volatility complicates real conversion.",lg:"Kadir Has University surveys + ACLED."},
+    note:"λ=0.62: precise transition zone. Young urban growth elevated in eastern cities (demographic channel). Credential inflation and fiscal stress activate Elite/Fiscal dynamics in western core."},
+
+  // ── BALKANS — new ──
+  "SRB":{ name:"Serbia",λ:0.82,scores:[0.45,0.48,0.50,0.48,0.35],ci:[0.06,0.08,0.09,0.11,0.15],T:{rw:0.48,ep:0.50,fs:0.42,lg:0.50},K:{yb:0.18,u:0.58,ybu:0.08,yug:6},wb:"SRB",
+    proxies:{rw:"SORS household income survey ÷ GDP per capita. PROXY — no continuous median wage series.",ep:"MRSNE graduates vs NES formal employment.",fs:"MoF Serbia/IMF debt-to-GDP.",lg:"CESID surveys + ACLED."},
+    note:"Moderate Elite/Fiscal stress. Credential inflation among youth and brain-drain (emigration of educated youth) are key SDT signals. Legitimacy erosion under Vučić government flagged in V-Dem data."},
+  "HRV":{ name:"Croatia",λ:0.88,scores:[0.38,0.40,0.42,0.40,0.30],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.38,ep:0.45,fs:0.40,lg:0.35},K:{yb:0.16,u:0.58,ybu:0.07,yug:4},wb:"HRV",
+    proxies:{rw:"CBS Croatia median wage ÷ GDP per capita. Eurostat cross-checked.",ep:"MZOS graduates vs HZZ employment absorption.",fs:"MoF Croatia/Eurostat debt-to-GDP.",lg:"Eurobarometer + ACLED."},
+    note:"Brain-drain (massive emigration to Germany, Austria, Ireland post-EU accession) is an elite overproduction signal in SDT terms — the credential class votes with its feet. Moderate stress overall."},
+  "BIH":{ name:"Bosnia & Herz.",λ:0.70,scores:[0.55,0.58,0.60,0.58,0.42],ci:[0.07,0.08,0.10,0.12,0.16],T:{rw:0.55,ep:0.52,fs:0.50,lg:0.65},K:{yb:0.18,u:0.50,ybu:0.09,yug:8},wb:"BIH",
+    proxies:{rw:"FBS/FZZS household survey ÷ GDP per capita. PROXY.",ep:"MHERS graduates vs FZZ employment.",fs:"MoF BH/IMF debt-to-GDP.",lg:"ACLED + Transparency International BiH."},
+    note:"Ethno-political governance structure creates a structural legitimacy deficit that maps directly to SDT's state fiscal distress channel. Youth emigration is extreme — a demographic-via-talent-loss signal."},
+  "MKD":{ name:"North Macedonia",λ:0.68,scores:[0.48,0.50,0.52,0.50,0.38],ci:[0.07,0.08,0.10,0.12,0.16],T:{rw:0.50,ep:0.48,fs:0.45,lg:0.55},K:{yb:0.20,u:0.60,ybu:0.08,yug:10},wb:"MKD",
+    proxies:{rw:"SSO household survey ÷ GDP per capita. PROXY.",ep:"MOES graduates vs SSO employment.",fs:"MoF RNM/IMF debt-to-GDP.",lg:"ACLED + OSCE ODIHR reports."},
+    note:"Moderate stress with elevated legitimacy deficit. Youth unemployment and emigration are the primary SDT signals."},
+  "ALB":{ name:"Albania",λ:0.60,scores:[0.45,0.48,0.50,0.48,0.35],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.45,ep:0.45,fs:0.42,lg:0.50},K:{yb:0.22,u:0.65,ybu:0.08,yug:14},wb:"ALB",
+    proxies:{rw:"INSTAT Albania household survey ÷ GDP per capita. PROXY.",ep:"MASH graduates vs INSTAT labour surveys.",fs:"MoF Albania/IMF debt-to-GDP.",lg:"ACLED + Eurobarometer candidate."},
+    note:"The 1997 Albania sociopolitical collapse (pyramid scheme riots) is a canonical SDT case studied in the literature — occurring precisely during Malthusian escape. Current indicators are moderate but brain-drain is extreme."},
+  "GRC":{ name:"Greece",λ:0.96,scores:[0.52,0.52,0.50,0.45,0.32],ci:[0.05,0.07,0.08,0.10,0.14],T:{rw:0.55,ep:0.62,fs:0.65,lg:0.52},K:{yb:0.16,u:0.80,ybu:0.03,yug:2},wb:"GRC",
+    proxies:{rw:"ELSTAT median wage ÷ GDP per capita.",ep:"Ministry of Education graduates vs DYPA employment. Severe credential inflation during austerity.",fs:"Bank of Greece/ESM debt-to-GDP (~170%).",lg:"Eurobarometer + ACLED austerity protests."},
+    note:"Peak fiscal stress during 2010–2018 austerity fits SDT perfectly: fiscal collapse → legitimacy crisis → mass mobilisation (Syriza rise). Currently recovering but debt remains very high."},
+  "BGR":{ name:"Bulgaria",λ:0.85,scores:[0.42,0.45,0.48,0.45,0.33],ci:[0.05,0.07,0.09,0.11,0.15],T:{rw:0.42,ep:0.48,fs:0.38,lg:0.48},K:{yb:0.16,u:0.78,ybu:0.03,yug:4},wb:"BGR",
+    proxies:{rw:"NSI Bulgaria median wage ÷ GDP per capita.",ep:"MES Bulgaria graduates vs NSI employment.",fs:"MoF Bulgaria/Eurostat debt-to-GDP.",lg:"Alpha Research trust + ACLED."},
+    note:"The most severe brain-drain in the EU — Bulgaria has lost ~15% of its population since 1990. In SDT terms this is the elite class voting against the system with feet, a counter-elite flight signal."},
+  "ROU":{ name:"Romania",λ:0.85,scores:[0.42,0.45,0.48,0.45,0.33],ci:[0.05,0.07,0.09,0.11,0.15],T:{rw:0.42,ep:0.45,fs:0.40,lg:0.45},K:{yb:0.17,u:0.55,ybu:0.08,yug:5},wb:"ROU",
+    proxies:{rw:"INS Romania median wage ÷ GDP per capita.",ep:"MEC graduates vs ANOFM employment.",fs:"MoF Romania/Eurostat debt-to-GDP.",lg:"INSCOP trust surveys + ACLED."},
+    note:"Significant brain-drain and credential inflation. Massive 2017–2019 anti-corruption protests fit SDT's legitimacy crisis mechanism. Moderate current stress."},
+  "MDA":{ name:"Moldova",λ:0.62,scores:[0.55,0.58,0.60,0.55,0.42],ci:[0.07,0.08,0.10,0.12,0.16],T:{rw:0.58,ep:0.52,fs:0.55,lg:0.62},K:{yb:0.20,u:0.44,ybu:0.11,yug:12},wb:"MDA",
+    proxies:{rw:"NBS Moldova household survey ÷ GDP per capita. PROXY.",ep:"ME Moldova graduates vs ANOFM.",fs:"NBM/IMF debt-to-GDP.",lg:"IRI surveys + ACLED."},
+    note:"Low urbanization with youth pressure (λ=0.62) combined with extreme remittance dependence. Geopolitical stress amplifies SFD."},
+  "SVK":{ name:"Slovakia",λ:0.92,scores:[0.38,0.40,0.42,0.40,0.30],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.38,ep:0.42,fs:0.38,lg:0.40},K:{yb:0.16,u:0.58,ybu:0.07,yug:3},wb:"SVK",
+    proxies:{rw:"ŠÚ SR median wage ÷ GDP per capita. Eurostat.",ep:"MŠVVaŠ graduates vs ÚPSVaR employment.",fs:"MF SR/Eurostat debt-to-GDP.",lg:"Focus Trust + ACLED."},
+    note:"Fico government's legitimacy erosion (return to power amid Fico assassination attempt 2024) is an SDT elite fragmentation signal."},
+  "CZE":{ name:"Czech Republic",λ:0.93,scores:[0.30,0.32,0.35,0.35,0.28],ci:[0.04,0.05,0.07,0.09,0.13],T:{rw:0.28,ep:0.35,fs:0.30,lg:0.28},K:{yb:0.15,u:0.75,ybu:0.03,yug:2},wb:"CZE",
+    proxies:{rw:"ČSÚ median wage ÷ GDP per capita. Direct.",ep:"MŠMT graduates vs ČSÚ labour demand.",fs:"MF ČR/Eurostat debt-to-GDP.",lg:"STEM trust surveys + ACLED."},
+    note:"Low stress overall. Babis populism (business counter-elite) is a mild SDT elite fragmentation signal."},
+  "HUN":{ name:"Hungary",λ:0.90,scores:[0.48,0.50,0.52,0.50,0.38],ci:[0.05,0.07,0.09,0.11,0.15],T:{rw:0.50,ep:0.50,fs:0.48,lg:0.55},K:{yb:0.16,u:0.73,ybu:0.04,yug:3},wb:"HUN",
+    proxies:{rw:"KSH median wage ÷ GDP per capita.",ep:"OH graduates vs NFSZ employment.",fs:"NGM/Eurostat debt-to-GDP.",lg:"Medián trust + ACLED."},
+    note:"Orbán's reconfiguration of elite access (dismantling of judicial independence, CEU expulsion) is a textbook SDT elite-capture-of-state signal."},
+  "SVN":{ name:"Slovenia",λ:0.93,scores:[0.28,0.30,0.32,0.30,0.25],ci:[0.04,0.05,0.07,0.09,0.13],T:{rw:0.28,ep:0.32,fs:0.30,lg:0.25},K:{yb:0.15,u:0.56,ybu:0.07,yug:3},wb:"SVN",
+    proxies:{rw:"SURS median wage ÷ GDP per capita. Eurostat.",ep:"MIZŠ graduates vs ZRSZ employment.",fs:"MF RS/Eurostat debt-to-GDP.",lg:"Eurobarometer + ACLED."},
+    note:"Among the lowest instability scores in Central Europe. Moderate brain-drain is the only notable SDT signal."},
+  "AUT":{ name:"Austria",λ:0.97,scores:[0.28,0.30,0.32,0.30,0.25],ci:[0.04,0.05,0.07,0.09,0.13],T:{rw:0.25,ep:0.30,fs:0.28,lg:0.25},K:{yb:0.15,u:0.62,ybu:0.06,yug:2},wb:"AUT",
+    proxies:{rw:"Statistik Austria median wage ÷ GDP per capita.",ep:"BMBWF graduates vs WKO employment.",fs:"BMF/Eurostat debt-to-GDP.",lg:"SORA trust + ACLED."},
+    note:"Low stress. FPÖ populism is a minor elite fragmentation signal; Austria's coalition culture has historically contained it."},
+  "BEL":{ name:"Belgium",λ:0.97,scores:[0.38,0.40,0.42,0.40,0.30],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.38,ep:0.42,fs:0.45,lg:0.40},K:{yb:0.17,u:0.98,ybu:0.00,yug:2},wb:"BEL",
+    proxies:{rw:"Statbel median wage ÷ GDP per capita.",ep:"ARES graduates vs VDAB/FOREM employment.",fs:"NBB/Eurostat debt-to-GDP (~105%).",lg:"Eurobarometer + ACLED."},
+    note:"Structural political gridlock (longest government formations in world history) is an SDT elite fragmentation signal. Fiscal debt elevated."},
+  "NLD":{ name:"Netherlands",λ:0.97,scores:[0.30,0.32,0.35,0.33,0.25],ci:[0.04,0.05,0.07,0.09,0.13],T:{rw:0.28,ep:0.32,fs:0.28,lg:0.30},K:{yb:0.16,u:0.92,ybu:0.01,yug:2},wb:"NLD",
+    proxies:{rw:"CBS median wage ÷ GDP per capita.",ep:"DUO graduates vs CBS labour demand.",fs:"MoF/Eurostat debt-to-GDP.",lg:"SCP trust + ACLED."},
+    note:"Wilders' PVV as counter-elite formation is a mild SDT signal. Housing crisis creating relative wage compression for younger cohorts."},
+  "PRT":{ name:"Portugal",λ:0.96,scores:[0.42,0.42,0.40,0.38,0.28],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.42,ep:0.48,fs:0.48,lg:0.40},K:{yb:0.16,u:0.68,ybu:0.05,yug:2},wb:"PRT",
+    proxies:{rw:"INE Portugal median wage ÷ GDP per capita.",ep:"DGEEC graduates vs IEFP employment.",fs:"DGO/Eurostat debt-to-GDP.",lg:"Barómetro ICS + ACLED."},
+    note:"Post-austerity recovery underway. Chega (far-right counter-elite) rise is a mild SDT signal. Brain-drain to Switzerland and UK remains elevated."},
+
+  // ── FENNO-SCANDIA — new ──
+  "SWE":{ name:"Sweden",λ:0.98,scores:[0.25,0.27,0.30,0.30,0.25],ci:[0.04,0.05,0.07,0.09,0.13],T:{rw:0.22,ep:0.28,fs:0.22,lg:0.22},K:{yb:0.17,u:0.88,ybu:0.02,yug:2},wb:"SWE",
+    proxies:{rw:"SCB median earnings ÷ GDP per capita. Direct — Sweden publishes median wages by detailed category.",ep:"UKÄ graduates vs SCB labour demand.",fs:"Riksgälden/ESV debt-to-GDP.",lg:"SOM Institute trust surveys + ACLED."},
+    note:"Among the world's lowest instability scores. Sweden Democrats' rise is an SDT counter-elite signal but institutions remain resilient. Housing market stress creates mild wage compression for youth."},
+  "NOR":{ name:"Norway",λ:0.98,scores:[0.18,0.20,0.22,0.22,0.20],ci:[0.03,0.04,0.06,0.08,0.12],T:{rw:0.15,ep:0.22,fs:0.12,lg:0.15},K:{yb:0.16,u:0.84,ybu:0.03,yug:2},wb:"NOR",
+    proxies:{rw:"SSB median wage ÷ GDP per capita. Direct.",ep:"NOKUT graduates vs NAV labour demand.",fs:"MoF Norway/SSB debt-to-GDP. Oil Fund transforms fiscal picture.",lg:"IPSOS Norway trust + ACLED."},
+    note:"Lowest instability score in dataset. Oil Fund provides an extraordinary fiscal buffer against all SDT stress channels. Moderate elite overproduction signal in academic sector."},
+  "DNK":{ name:"Denmark",λ:0.98,scores:[0.20,0.22,0.24,0.24,0.20],ci:[0.03,0.04,0.06,0.08,0.12],T:{rw:0.18,ep:0.24,fs:0.20,lg:0.18},K:{yb:0.16,u:0.88,ybu:0.02,yug:2},wb:"DNK",
+    proxies:{rw:"Danmarks Statistik median wage ÷ GDP per capita. Direct.",ep:"UFM graduates vs Danmarks Statistik labour demand.",fs:"FM/Eurostat debt-to-GDP.",lg:"Epinion trust + ACLED."},
+    note:"Very low instability. Flexicurity labour model buffers wage compression. Dansk Folkeparti/Danmarksdemokraterne as counter-elite are moderate signals."},
+  "FIN":{ name:"Finland",λ:0.98,scores:[0.22,0.24,0.26,0.26,0.22],ci:[0.03,0.04,0.06,0.08,0.12],T:{rw:0.20,ep:0.26,fs:0.28,lg:0.20},K:{yb:0.15,u:0.86,ybu:0.02,yug:2},wb:"FIN",
+    proxies:{rw:"Tilastokeskus median wage ÷ GDP per capita. Direct.",ep:"OKM graduates vs TE-palvelut labour demand.",fs:"VM/Eurostat debt-to-GDP.",lg:"EVA Trust + ACLED."},
+    note:"Low instability. Fiscal stress slightly elevated due to post-2008 and post-COVID borrowing and aging demographics. PhD overproduction mild."},
+  "ISL":{ name:"Iceland",λ:0.97,scores:[0.25,0.27,0.28,0.28,0.22],ci:[0.04,0.05,0.07,0.09,0.13],T:{rw:0.25,ep:0.28,fs:0.25,lg:0.22},K:{yb:0.20,u:0.95,ybu:0.01,yug:3},wb:"ISL",
+    proxies:{rw:"Hagstofa median wage ÷ GDP per capita. Direct.",ep:"MRN graduates vs Vinnumálastofnun demand.",fs:"Fjármálaráðuneytið/IMF debt-to-GDP.",lg:"MMR trust + ACLED."},
+    note:"Iceland's 2008–2011 banking crisis and Pots-and-Pans Revolution are canonical SDT cases of fiscal collapse → mass mobilisation → elite replacement. Currently recovered. Pirate Party as counter-elite signal historically."},
+
+  // ── BALTIC STATES — new ──
+  "EST":{ name:"Estonia",λ:0.93,scores:[0.28,0.30,0.32,0.30,0.25],ci:[0.04,0.05,0.07,0.09,0.13],T:{rw:0.28,ep:0.32,fs:0.25,lg:0.25},K:{yb:0.15,u:0.70,ybu:0.05,yug:3},wb:"EST",
+    proxies:{rw:"Statistikaamet median wage ÷ GDP per capita. Direct.",ep:"HTM graduates vs Töötukassa demand.",fs:"Rahandusministeerium/Eurostat debt-to-GDP.",lg:"Turu-uuringute trust + ACLED."},
+    note:"Among the most digitally advanced and institutionally resilient states in the region. Russian ethnic minority (25%) creates a latent legitimacy stress that standard surveys undercount."},
+  "LVA":{ name:"Latvia",λ:0.90,scores:[0.33,0.35,0.38,0.35,0.28],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.33,ep:0.38,fs:0.32,lg:0.32},K:{yb:0.16,u:0.68,ybu:0.05,yug:3},wb:"LVA",
+    proxies:{rw:"CSP Latvia median wage ÷ GDP per capita. Eurostat.",ep:"IZM graduates vs NVA employment.",fs:"FM Latvia/Eurostat debt-to-GDP.",lg:"SKDS trust + ACLED."},
+    note:"Major brain-drain since EU accession — Latvia has lost ~20% of its population. In SDT terms this is a mass-exit of the credential class, reducing the elite overproduction pressure but also hollowing state capacity."},
+  "LTU":{ name:"Lithuania",λ:0.90,scores:[0.33,0.35,0.38,0.35,0.28],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.33,ep:0.38,fs:0.32,lg:0.30},K:{yb:0.16,u:0.70,ybu:0.05,yug:3},wb:"LTU",
+    proxies:{rw:"Statistics Lithuania median wage ÷ GDP per capita. Eurostat.",ep:"ŠMM graduates vs LSADP employment.",fs:"FM Lithuania/Eurostat debt-to-GDP.",lg:"Baltic Barometer + ACLED."},
+    note:"Similar to Latvia — massive emigration as demographic relief valve. Moderate and declining instability trajectory."},
+
+  // ── MIDDLE EAST ──
+  "SAU":{ name:"Saudi Arabia",λ:0.50,scores:[0.55,0.60,0.65,0.62,0.45],ci:[0.07,0.09,0.11,0.13,0.17],T:{rw:0.52,ep:0.58,fs:0.55,lg:0.58},K:{yb:0.32,u:0.84,ybu:0.05,yug:25},wb:"SAU",
+    proxies:{rw:"GASTAT Labour Force Survey average ÷ GDP per capita. PROXY — no median.",ep:"MoE graduates ÷ Nitaqat private-sector absorption.",fs:"SAMA/MoF debt-to-GDP.",lg:"US State Dept + V-Dem."},
+    note:"Youth bulge substantial despite high urbanization. Oil revenues suppress fiscal stress but elite overproduction in credential-inflating system is rising."},
+  "EGY":{ name:"Egypt",λ:0.35,scores:[0.72,0.78,0.82,0.85,0.75],ci:[0.06,0.08,0.10,0.11,0.14],T:{rw:0.68,ep:0.65,fs:0.72,lg:0.75},K:{yb:0.34,u:0.43,ybu:0.19,yug:34},wb:"EGY",
+    proxies:{rw:"CAPMAS household surveys ÷ GDP per capita. PROXY.",ep:"MoHE graduate output vs CAPMAS formal employment.",fs:"IMF Article IV / CBE debt-to-GDP.",lg:"ACLED + Arab Barometer."},
+    note:"Canonical 'trap at the Malthusian escape'. Young urban growth exceeds 30%/5yr. YB×(1−U) critically elevated. 2011 revolution fits this model precisely."},
+  "SYR":{ name:"Syria",λ:0.30,scores:[0.88,0.80,0.72,0.65,0.50],ci:[0.04,0.06,0.08,0.10,0.14],T:{rw:0.75,ep:0.68,fs:0.85,lg:0.92},K:{yb:0.38,u:0.56,ybu:0.17,yug:40},wb:"SYR",
+    proxies:{rw:"Pre-2011 CBS Syria surveys. Post-2011: WFP proxy. ESTIMATED.",ep:"Pre-2011 Ministry data. Post-2011: UNESCO estimates.",fs:"Pre-2011 CBE data; post-2011 state collapse.",lg:"ACLED + UCDP."},
+    note:"Young urban growth exceeded 45%/5yr — empirical threshold above which no country (of 34 studied) avoided major violent conflict."},
+  "IRQ":{ name:"Iraq",λ:0.28,scores:[0.82,0.80,0.78,0.72,0.55],ci:[0.05,0.07,0.09,0.11,0.15],T:{rw:0.72,ep:0.65,fs:0.75,lg:0.88},K:{yb:0.40,u:0.72,ybu:0.11,yug:38},wb:"IRQ",
+    proxies:{rw:"CSO Iraq household surveys. Post-2003: ILO estimates. PROXY.",ep:"MoHESR graduates vs CSO formal employment.",fs:"IMF oil-adjusted debt.",lg:"ACLED + IOM displacement."},
+    note:"Among the highest youth bulge indicators. YB×(1−U) elevated in southern and western provinces."},
+  "IRN":{ name:"Iran",λ:0.45,scores:[0.72,0.75,0.78,0.75,0.55],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.72,ep:0.68,fs:0.70,lg:0.80},K:{yb:0.28,u:0.76,ybu:0.07,yug:20},wb:"IRN",
+    proxies:{rw:"SCI household budget surveys ÷ GDP per capita (PPP). PROXY.",ep:"MoST graduates vs SCI labour market.",fs:"CBI/IMF debt-to-GDP. Sanctions complicate.",lg:"ACLED + IranWire protest database."},
+    note:"1979 Islamic Revolution was a canonical 'trap at the escape' event. Current indicators show elevated Elite/Fiscal stress alongside residual demographic pressure."},
+  "YEM":{ name:"Yemen",λ:0.10,scores:[0.95,0.92,0.88,0.80,0.65],ci:[0.03,0.05,0.07,0.09,0.13],T:{rw:0.88,ep:0.72,fs:0.92,lg:0.95},K:{yb:0.48,u:0.38,ybu:0.30,yug:55},wb:"YEM",
+    proxies:{rw:"WFP food basket cost ÷ day-labourer rates. ESTIMATED.",ep:"UNESCO education pre-2015; UNICEF Yemen post-conflict.",fs:"World Bank/IMF pre-conflict data.",lg:"ACLED + UCDP."},
+    note:"Most extreme demographic indicators in dataset. Young urban growth exceeded 45%/5yr. State collapse active."},
+  "ISR":{ name:"Israel",λ:0.90,scores:[0.52,0.55,0.60,0.58,0.42],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.52,ep:0.55,fs:0.55,lg:0.60},K:{yb:0.28,u:0.95,ybu:0.01,yug:8},wb:"ISR",
+    proxies:{rw:"CBS Israel median wage ÷ GDP per capita. Direct.",ep:"CHE graduates vs CBS labour demand.",fs:"MoF/IMF debt-to-GDP. War spending post-2023 elevating.",lg:"IDI trust surveys + ACLED."},
+    note:"Judicial overhaul crisis (2023) and Gaza war (2023–) are driving sharp legitimacy and fiscal stress increases. Elite fragmentation between religious-nationalist counter-elite and secular establishment is a textbook SDT signal."},
+
+  // ── AFRICA ──
+  "NGA":{ name:"Nigeria",λ:0.18,scores:[0.80,0.85,0.88,0.88,0.78],ci:[0.05,0.07,0.08,0.09,0.12],T:{rw:0.72,ep:0.65,fs:0.70,lg:0.82},K:{yb:0.44,u:0.54,ybu:0.20,yug:42},wb:"NGA",
+    proxies:{rw:"NBS NLSS household survey ÷ GDP per capita. PROXY.",ep:"NUC graduates vs NBS formal employment.",fs:"DMO debt-to-GDP.",lg:"ACLED + SBM Intelligence."},
+    note:"Young urban growth in high-risk zone (>30%/5yr). YB×(1−U) critically elevated. Primary driver of instability in Middle Belt and Northeast."},
+  "ETH":{ name:"Ethiopia",λ:0.10,scores:[0.78,0.85,0.90,0.90,0.75],ci:[0.05,0.07,0.08,0.09,0.12],T:{rw:0.70,ep:0.60,fs:0.72,lg:0.80},K:{yb:0.42,u:0.23,ybu:0.32,yug:38},wb:"ETH",
+    proxies:{rw:"ESS household survey ÷ GDP per capita. PROXY.",ep:"MoE graduates vs CSA employment surveys.",fs:"MoF/World Bank debt-to-GDP.",lg:"ACLED + Ethiopian Human Rights Commission."},
+    note:"Very low urbanization (23%) with extreme youth bulge produces highest YB×(1−U) in dataset. Tigray conflict (2020–) fits the structural-demographic prediction precisely."},
+  "COD":{ name:"DR Congo",λ:0.08,scores:[0.85,0.88,0.90,0.88,0.78],ci:[0.04,0.06,0.07,0.08,0.11],T:{rw:0.80,ep:0.70,fs:0.85,lg:0.90},K:{yb:0.46,u:0.47,ybu:0.24,yug:45},wb:"COD",
+    proxies:{rw:"WFP monitoring + ILO informal estimates. ESTIMATED.",ep:"UNESCO/UNICEF enrolment vs ONEM employment. Very limited data.",fs:"IMF Article IV. Extreme data scarcity.",lg:"ACLED + UCDP."},
+    note:"Approaching critical threshold of 45% young urban population growth per 5yr. State fiscal collapse and near-zero legitimate governance compound structural-demographic pressure."},
+  "SDN":{ name:"Sudan",λ:0.12,scores:[0.88,0.88,0.85,0.80,0.65],ci:[0.04,0.06,0.08,0.10,0.14],T:{rw:0.82,ep:0.72,fs:0.88,lg:0.90},K:{yb:0.44,u:0.36,ybu:0.28,yug:42},wb:"SDN",
+    proxies:{rw:"CBS Sudan household survey (limited). Post-2023: WFP/IPC proxy. ESTIMATED.",ep:"MoHE graduates vs CBS. Post-2023 war severely disrupts.",fs:"IMF/World Bank debt.",lg:"ACLED + UCDP."},
+    note:"Very low urbanization amplifies YB×(1−U) to critical levels. 2019 and 2021 upheavals fit demographic pathway. Fiscal collapse post-South Sudan split."},
+  "SOM":{ name:"Somalia",λ:0.05,scores:[0.92,0.90,0.88,0.82,0.68],ci:[0.03,0.05,0.07,0.09,0.13],T:{rw:0.85,ep:0.72,fs:0.95,lg:0.98},K:{yb:0.48,u:0.48,ybu:0.25,yug:52},wb:"SOM",
+    proxies:{rw:"WFP monitoring + remittance-to-income ratios. ESTIMATED.",ep:"UNESCO/UNICEF enrolment vs ILO youth employment estimates.",fs:"World Bank/IMF estimates only.",lg:"ACLED + Failed State Index."},
+    note:"In demographic-predicted collapse since 1991. Young urban growth rates exceeded 45% for multiple 5-year periods."},
+  "KEN":{ name:"Kenya",λ:0.22,scores:[0.58,0.65,0.72,0.75,0.65],ci:[0.06,0.08,0.10,0.11,0.13],T:{rw:0.55,ep:0.52,fs:0.55,lg:0.62},K:{yb:0.38,u:0.29,ybu:0.27,yug:32},wb:"KEN",
+    proxies:{rw:"KNBS household survey ÷ GDP per capita. PROXY.",ep:"KUCCPS graduates vs KNBS formal employment.",fs:"CBK/National Treasury debt-to-GDP.",lg:"ACLED + Afrobarometer."},
+    note:"Projected young urban growth reaching 30%/5yr (2021–2025) — high-risk category. Low urbanization relative to youth bulge elevates YB×(1−U)."},
+  "TZA":{ name:"Tanzania",λ:0.12,scores:[0.62,0.70,0.78,0.80,0.68],ci:[0.06,0.08,0.10,0.11,0.13],T:{rw:0.58,ep:0.52,fs:0.55,lg:0.60},K:{yb:0.42,u:0.38,ybu:0.26,yug:35},wb:"TZA",
+    proxies:{rw:"NBS Tanzania household budget survey ÷ GDP per capita. PROXY.",ep:"TCU graduates vs NBS labour surveys.",fs:"BoT/MoF debt-to-GDP.",lg:"Afrobarometer + ACLED."},
+    note:"High-risk in 2021–2030 window. Young urban population projected >30%/5yr. Trajectory upward through 2030s."},
+  "ZAF":{ name:"South Africa",λ:0.72,scores:[0.62,0.65,0.65,0.60,0.42],ci:[0.06,0.08,0.09,0.11,0.15],T:{rw:0.65,ep:0.62,fs:0.60,lg:0.65},K:{yb:0.30,u:0.68,ybu:0.10,yug:14},wb:"ZAF",
+    proxies:{rw:"Stats SA QLFS median wage ÷ GDP per capita. Direct.",ep:"DHET graduates vs Stats SA QLFS.",fs:"National Treasury debt-to-GDP.",lg:"Afrobarometer + ACLED."},
+    note:"λ=0.72: predominantly Elite/Fiscal. Extreme inequality is a wealth pump indicator. Residual demographic pressure from youth bulge in labour-absorbing areas."},
+  "GHA":{ name:"Ghana",λ:0.20,scores:[0.45,0.48,0.52,0.55,0.48],ci:[0.07,0.08,0.10,0.11,0.13],T:{rw:0.42,ep:0.40,fs:0.48,lg:0.45},K:{yb:0.36,u:0.58,ybu:0.15,yug:22},wb:"GHA",
+    proxies:{rw:"GSS GLSS household survey ÷ GDP per capita. PROXY.",ep:"NCTE graduates vs GSS labour surveys.",fs:"BoG/MoF debt-to-GDP.",lg:"Afrobarometer + ACLED."},
+    note:"Cross-national analysis suggests declining young urban growth toward safe levels post-2015. Moderate risk through 2030."},
+  "MAR":{ name:"Morocco",λ:0.38,scores:[0.48,0.52,0.55,0.52,0.38],ci:[0.06,0.08,0.09,0.11,0.15],T:{rw:0.48,ep:0.52,fs:0.45,lg:0.50},K:{yb:0.30,u:0.64,ybu:0.11,yug:24},wb:"MAR",
+    proxies:{rw:"HCP household income survey ÷ GDP per capita. PROXY.",ep:"MES graduates vs HCP employment.",fs:"TGR/IMF debt-to-GDP.",lg:"Baromètre arabe + ACLED."},
+    note:"2011 constitutional reforms partially absorbed demographic-predicted instability. Credential inflation rising as Turchin channel activates."},
+  "DZA":{ name:"Algeria",λ:0.38,scores:[0.60,0.62,0.62,0.55,0.40],ci:[0.06,0.08,0.09,0.11,0.15],T:{rw:0.60,ep:0.62,fs:0.65,lg:0.62},K:{yb:0.30,u:0.74,ybu:0.08,yug:22},wb:"DZA",
+    proxies:{rw:"ONS Algeria household survey ÷ GDP per capita. PROXY.",ep:"MESRS graduates vs ANEM formal employment.",fs:"Banque d'Algérie/IMF debt-to-GDP.",lg:"Arab Barometer + ACLED Hirak events."},
+    note:"Canonical SDT case study. 1992 civil war followed the predicted path: Malthusian escape → youth bulge → urban concentration → 'hittiste' generation → political explosion."},
+  "LBY":{ name:"Libya",λ:0.28,scores:[0.82,0.80,0.78,0.72,0.55],ci:[0.05,0.07,0.09,0.11,0.15],T:{rw:0.75,ep:0.68,fs:0.72,lg:0.88},K:{yb:0.34,u:0.80,ybu:0.07,yug:30},wb:"LBY",
+    proxies:{rw:"No post-2011 wage data. Pre-2011 ILO + post-2011 UNHCR/WFP proxy. ESTIMATED.",ep:"Pre-2011 University data; post-2011 UNESCO estimates.",fs:"IMF/CBL estimates.",lg:"ACLED + UN Panel of Experts."},
+    note:"2011 collapse fits demographic model. Oil revenues suppressed Malthusian pressure while youth bulge was building."},
+  "NER":{ name:"Niger",λ:0.05,scores:[0.85,0.90,0.92,0.92,0.85],ci:[0.04,0.05,0.07,0.08,0.10],T:{rw:0.80,ep:0.70,fs:0.85,lg:0.85},K:{yb:0.52,u:0.17,ybu:0.43,yug:48},wb:"NER",
+    proxies:{rw:"INS Niger household survey. PROXY.",ep:"MES Niger graduates vs INS employment. Very limited.",fs:"MEF/IMF debt-to-GDP.",lg:"ACLED + Freedom House."},
+    note:"'Very High' risk. Young urban growth 41.8%/5yr (2021–2025). Urbanization only 17% — YB×(1−U) is the highest in this dataset."},
+  "MLI":{ name:"Mali",λ:0.08,scores:[0.82,0.85,0.88,0.88,0.78],ci:[0.04,0.06,0.08,0.09,0.12],T:{rw:0.78,ep:0.68,fs:0.82,lg:0.88},K:{yb:0.46,u:0.45,ybu:0.25,yug:40},wb:"MLI",
+    proxies:{rw:"INSTAT Mali household survey. PROXY.",ep:"MESRS graduates vs ANPE employment.",fs:"BCEAO/IMF debt-to-GDP.",lg:"ACLED + Freedom House."},
+    note:"Critical demographic indicators. 2012 and 2021 coups fit structural-demographic prediction. Sahel migration flows demonstrate 'excessive young population not required in rural areas' mechanism."},
+  "BFA":{ name:"Burkina Faso",λ:0.06,scores:[0.80,0.85,0.90,0.90,0.80],ci:[0.04,0.06,0.08,0.09,0.11],T:{rw:0.75,ep:0.65,fs:0.80,lg:0.85},K:{yb:0.46,u:0.32,ybu:0.31,yug:42},wb:"BFA",
+    proxies:{rw:"INSD household survey. PROXY.",ep:"MESRSI graduates vs INSD employment.",fs:"BCEAO/IMF debt-to-GDP.",lg:"ACLED + HRW."},
+    note:"Projected young urban growth 38.7%/5yr (2021–2025). Jihadist insurgency from 2015 fits the structural pathway precisely."},
+  "MOZ":{ name:"Mozambique",λ:0.08,scores:[0.68,0.72,0.78,0.80,0.72],ci:[0.05,0.07,0.09,0.10,0.12],T:{rw:0.65,ep:0.58,fs:0.72,lg:0.72},K:{yb:0.44,u:0.37,ybu:0.28,yug:38},wb:"MOZ",
+    proxies:{rw:"INE Mozambique household survey. PROXY.",ep:"MCTESTP graduates vs INE labour.",fs:"BM/IMF debt-to-GDP.",lg:"ACLED + AI/HRW."},
+    note:"Medium-risk (2021–2030). Northern insurgency (Cabo Delgado) fits demographic pathway: high YB×(1−U) in gas-boom regions."},
+
+  // ── ASIA ──
+  "CHN":{ name:"China",λ:0.85,scores:[0.68,0.72,0.75,0.78,0.65],ci:[0.06,0.08,0.10,0.12,0.14],T:{rw:0.62,ep:0.82,fs:0.65,lg:0.75},K:{yb:0.18,u:0.65,ybu:0.06,yug:5},wb:"CHN",
+    proxies:{rw:"NBS urban unit average wage ÷ GDP per capita (PPP). Median inferred from CHIP/CFPS distribution. PROXY. Youth unemployment officially exceeded 20% (2023) before NBS suspended publication.",ep:"MoE PhD graduate output. China now produces more PhDs annually than any country. Civil service exam: >3 million applicants for ~40,000 positions in 2024 (75:1 ratio). Elite overproduction is the highest single score in the dataset.",fs:"MoF official ~50% GDP; including LGFVs IMF estimates ~80–110%. Xi anti-corruption campaign prosecuted >4.7 million officials (2013–2023) including senior CMC and politburo members — intra-elite competition signal.",lg:"No independent surveys. PROXY: anti-corruption prosecution counts + ACLED + China Labour Bulletin + 'A4 Revolution' (Nov 2022) registered."},
+    note:"Significantly more unstable than conventional readings suggest. EMP is the highest score in the dataset: record PhD production, catastrophic civil-service ratios (75:1), rising wealth concentration. Xi purges (4.7M officials) = intra-elite competition in SDT terms. Youth unemployment >20% + '躺平' cultural phenomenon = wage compression. PSI trajectory sharply rising."},
+  "JPN":{ name:"Japan",λ:0.99,scores:[0.52,0.58,0.65,0.72,0.78],ci:[0.05,0.07,0.09,0.11,0.13],T:{rw:0.55,ep:0.78,fs:0.82,lg:0.60},K:{yb:0.12,u:0.93,ybu:0.01,yug:1},wb:"JPN",
+    proxies:{rw:"MHLW Basic Survey on Wage Structure — median wage directly published. Relative wage = median ÷ GDP per capita. Non-regular workers: 36.7% of employment (2021), depressing effective median. Direct.",ep:"PhD-to-positions ratio: MEXT PhD graduates ÷ newly opened university positions (JREC-IN). Ratio rose from ~1.5 to ~20. Ultra-wealthy share: Nomura Research Institute. Top-1% wealth ratio 12.0 (1984) → 19.0 (2019) → ~20.8 (2023) per Kitao & Yamada 2025.",fs:"MOF general-government gross debt-to-GDP. Upper asymptote ~280% GDP. Cabinet approval: 23% (NHK, late 2023). LDP 'Urazkin' scandal 2023–24. Social expenditure doubled since 1980 to ~25% GDP.",lg:"NHK monthly cabinet approval/disapproval. Abe assassination (2022), Kishida bombing attempt (2023). ACLED minimal. Sanseitō, Tsubasa no Tō, Reiwa Shinsengumi as counter-elite/populist formations."},
+    note:"Japan's instability is structural and rising, not yet manifested in mass violence. EMP is the dominant driver: PhD-to-positions ratio near saturation, ultra-wealthy share rising continuously. SFD: debt approaching 260% GDP, cabinet approval at historic lows. PSI projected to continue rising through 2040–2050. Pathway runs through elite fragmentation and governance legitimacy erosion, not mass protest."},
+  "IND":{ name:"India",λ:0.42,scores:[0.58,0.62,0.65,0.65,0.50],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.55,ep:0.58,fs:0.48,lg:0.55},K:{yb:0.30,u:0.36,ybu:0.19,yug:24},wb:"IND",
+    proxies:{rw:"PLFS periodic labour force survey ÷ GDP per capita. PROXY.",ep:"AISHE graduate output vs PLFS non-agricultural employment.",fs:"RBI/MoF central + state debt-to-GDP.",lg:"CSDS Lokniti surveys + ACLED."},
+    note:"λ=0.42: active demographic channel. Low urbanization (36%) relative to youth bulge keeps YB×(1−U) elevated. 'Youth dividend' is simultaneously a 'youth risk' in underabsorbing urban labour markets."},
+  "PAK":{ name:"Pakistan",λ:0.25,scores:[0.75,0.78,0.82,0.82,0.68],ci:[0.05,0.07,0.09,0.10,0.13],T:{rw:0.72,ep:0.68,fs:0.75,lg:0.78},K:{yb:0.40,u:0.38,ybu:0.25,yug:36},wb:"PAK",
+    proxies:{rw:"HIES household survey ÷ GDP per capita. PROXY.",ep:"HEC graduates vs PBS labour force surveys.",fs:"SBP/IMF debt-to-GDP.",lg:"Gallup Pakistan + ACLED."},
+    note:"Most dangerous configuration: critical demographic indicators (high YB×(1−U) from low urbanization) PLUS Elite/Fiscal stress simultaneously active."},
+  "AFG":{ name:"Afghanistan",λ:0.05,scores:[0.95,0.92,0.88,0.82,0.68],ci:[0.03,0.05,0.07,0.09,0.13],T:{rw:0.88,ep:0.75,fs:0.95,lg:0.98},K:{yb:0.50,u:0.27,ybu:0.37,yug:55},wb:"AFG",
+    proxies:{rw:"ALCS household surveys (pre-Taliban). Post-2021: WFP proxy. ESTIMATED.",ep:"MoHE pre-2021; post-2021 female education ban.",fs:"World Bank/IMF pre-2021; state collapse post-2021.",lg:"ACLED + UCDP."},
+    note:"Young urban growth chronically exceeded 45%/5yr — unconditional empirical threshold: 0 of 34 countries avoided major upheaval. State collapse dynamics dominate."},
+  "BGD":{ name:"Bangladesh",λ:0.30,scores:[0.52,0.55,0.58,0.58,0.42],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.50,ep:0.48,fs:0.44,lg:0.55},K:{yb:0.32,u:0.40,ybu:0.19,yug:28},wb:"BGD",
+    proxies:{rw:"BBS household income survey ÷ GDP per capita. PROXY.",ep:"UGC graduates vs BBS labour force surveys.",fs:"BB/MoF debt-to-GDP.",lg:"Prothom Alo/BRAC surveys + ACLED."},
+    note:"Partially absorbed youth bulge through garment industry urbanization — a successful demographic escape mechanism. Young urban growth declining toward safe levels."},
+  "MMR":{ name:"Myanmar",λ:0.22,scores:[0.78,0.80,0.80,0.75,0.58],ci:[0.05,0.07,0.09,0.11,0.15],T:{rw:0.75,ep:0.68,fs:0.72,lg:0.85},K:{yb:0.34,u:0.32,ybu:0.23,yug:28},wb:"MMR",
+    proxies:{rw:"MLCS household survey (pre-2021). Post-2021: WFP/OCHA. PROXY.",ep:"MoE graduates vs DICA/MOLIP. Post-coup unavailable.",fs:"CBM/World Bank pre-coup; post-2021: IMF estimates.",lg:"ACLED + AAPP."},
+    note:"2021 coup fits both pathways simultaneously."},
+  "THA":{ name:"Thailand",λ:0.80,scores:[0.42,0.45,0.48,0.45,0.32],ci:[0.05,0.07,0.09,0.11,0.15],T:{rw:0.42,ep:0.48,fs:0.38,lg:0.45},K:{yb:0.22,u:0.53,ybu:0.10,yug:8},wb:"THA",
+    proxies:{rw:"NSO labour force survey ÷ GDP per capita. PROXY.",ep:"OHEC graduates vs NSO employment.",fs:"BOT/MoF debt-to-GDP.",lg:"NIDA polls + ACLED."},
+    note:"Elite/Fiscal dominant. Elite competition between royalist-military networks and new commercial elite fits counter-elite model."},
+  "IDN":{ name:"Indonesia",λ:0.50,scores:[0.45,0.48,0.52,0.55,0.42],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.45,ep:0.48,fs:0.40,lg:0.42},K:{yb:0.28,u:0.58,ybu:0.12,yug:18},wb:"IDN",
+    proxies:{rw:"BPS Sakernas survey ÷ GDP per capita. PROXY.",ep:"PDDikti graduates vs BPS labour surveys.",fs:"BI/MoF debt-to-GDP.",lg:"Indo Barometer + ACLED."},
+    note:"λ=0.50: transitional. Demographic channel declining as urbanization absorbs youth. Elite/Fiscal channel activating with credential inflation in Jakarta."},
+  "PHL":{ name:"Philippines",λ:0.40,scores:[0.58,0.62,0.65,0.65,0.50],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.55,ep:0.52,fs:0.45,lg:0.62},K:{yb:0.32,u:0.48,ybu:0.17,yug:26},wb:"PHL",
+    proxies:{rw:"PSA FIES household income ÷ GDP per capita. PROXY.",ep:"CHED graduates vs PSA labour surveys.",fs:"BSP/DOF debt-to-GDP.",lg:"SWS surveys + ACLED."},
+    note:"Persistent demographic channel with low urban absorption. Mindanao insurgencies fit SDT prediction for high YB×(1−U) regions."},
+  "VNM":{ name:"Vietnam",λ:0.65,scores:[0.32,0.35,0.38,0.40,0.32],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.32,ep:0.38,fs:0.38,lg:0.28},K:{yb:0.24,u:0.38,ybu:0.15,yug:14},wb:"VNM",
+    proxies:{rw:"GSO VHLSS household survey ÷ GDP per capita. PROXY.",ep:"MOET graduates vs GSO labour surveys.",fs:"SBV/MoF debt-to-GDP.",lg:"Freedom House + ACLED."},
+    note:"Rapid urbanization absorbing youth bulge effectively. YB×(1−U) declining. Low instability trajectory projected to continue."},
+  "KOR":{ name:"South Korea",λ:0.95,scores:[0.38,0.40,0.42,0.40,0.30],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.40,ep:0.45,fs:0.32,lg:0.35},K:{yb:0.15,u:0.82,ybu:0.03,yug:3},wb:"KOR",
+    proxies:{rw:"KEIS median wage ÷ GDP per capita. Direct.",ep:"KEDI graduates vs KEIS labour demand.",fs:"MOEF debt-to-GDP.",lg:"KDI Trust surveys + ACLED."},
+    note:"Low indicators. 1980 Kwangju uprising occurred precisely during Malthusian escape — a historical SDT case."},
+  "JPN2":"skip", // already defined as JPN above
+  "MYS":{ name:"Malaysia",λ:0.68,scores:[0.38,0.40,0.42,0.42,0.32],ci:[0.05,0.06,0.08,0.10,0.14],T:{rw:0.38,ep:0.42,fs:0.40,lg:0.38},K:{yb:0.24,u:0.78,ybu:0.05,yug:10},wb:"MYS",
+    proxies:{rw:"DOSM median wage ÷ GDP per capita. PROXY.",ep:"MoHE graduates vs DOSM employment.",fs:"MOF/BNM debt-to-GDP.",lg:"Merdeka Center trust + ACLED."},
+    note:"Moderate and declining stress. Racial quota politics (Bumiputera system) creates a structural elite overproduction distortion that standard measures undercount."},
+  "KAZ":{ name:"Kazakhstan",λ:0.78,scores:[0.48,0.52,0.55,0.52,0.38],ci:[0.06,0.08,0.10,0.12,0.16],T:{rw:0.48,ep:0.50,fs:0.45,lg:0.52},K:{yb:0.22,u:0.58,ybu:0.09,yug:10},wb:"KAZ",
+    proxies:{rw:"Statistics Kazakhstan median wage ÷ GDP per capita. Direct.",ep:"MES Kazakhstan graduates vs Statistics Kazakhstan employment.",fs:"MoF/NBK debt-to-GDP.",lg:"IRI/Gallup Central Asia + ACLED Almaty 2022."},
+    note:"2022 uprising fits Elite/Fiscal model: counter-elite competition within ruling structure + wage stagnation in non-oil economy."},
+
+  // ── OCEANIA ──
+  "AUS":{ name:"Australia",λ:0.97,scores:[0.25,0.28,0.30,0.28,0.22],ci:[0.04,0.05,0.07,0.09,0.13],T:{rw:0.25,ep:0.30,fs:0.22,lg:0.22},K:{yb:0.17,u:0.87,ybu:0.02,yug:3},wb:"AUS",
+    proxies:{rw:"ABS employee earnings — median wage directly published. Direct.",ep:"DESE graduates vs ABS labour demand. Direct.",fs:"Treasury/AOFM debt-to-GDP. Direct.",lg:"IPSOS/Scanlon Foundation social cohesion + ACLED."},
+    note:"Low stress. Moderate elite overproduction in credential class. Strong institutions buffer legitimacy stress."},
+  "NZL":{ name:"New Zealand",λ:0.97,scores:[0.22,0.24,0.26,0.25,0.20],ci:[0.03,0.04,0.06,0.08,0.12],T:{rw:0.20,ep:0.26,fs:0.24,lg:0.20},K:{yb:0.16,u:0.87,ybu:0.02,yug:2},wb:"NZL",
+    proxies:{rw:"Stats NZ median income ÷ GDP per capita. Direct.",ep:"TEC graduates vs Stats NZ labour demand.",fs:"Treasury NZ debt-to-GDP.",lg:"IPSOS NZ trust + ACLED."},
+    note:"Very low instability. ACT Party as minor counter-elite signal. Housing market creates mild wage compression for younger cohorts."},
+};
+// Remove the placeholder
+delete D["JPN2"];
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+const HLabels = ["Now","+5yr","+10yr","+20yr","+50yr"];
+let curHorizon = 0, selISO = null, apiKey = "", aiModel = "llama-3.3-70b-versatile";
+let newsFilter = "all", litFilter = "all";
+let liveData = {}; // cache WB data per country
+
+// ═══════════════════════════════════════════════════════
+// COLOUR
+// ═══════════════════════════════════════════════════════
+function riskCol(s){
+  if(s==null) return "var(--rND)";
+  if(s>=0.75) return "var(--rVH)";
+  if(s>=0.55) return "var(--rH)";
+  if(s>=0.40) return "var(--rMH)";
+  if(s>=0.25) return "var(--rM)";
+  if(s>=0.10) return "var(--rL)";
+  return "var(--rVL)";
+}
+function riskBand(s){
+  if(s==null) return "No Data";
+  if(s>=0.75) return "VERY HIGH";
+  if(s>=0.55) return "HIGH";
+  if(s>=0.40) return "MEDIUM-HIGH";
+  if(s>=0.25) return "MEDIUM";
+  if(s>=0.10) return "LOW";
+  return "VERY LOW";
+}
+
+// ═══════════════════════════════════════════════════════
+// MAP
+// ═══════════════════════════════════════════════════════
+const svg = d3.select("#map-svg");
+let projection, path, gCountries;
+
+async function buildMap(){
+  const wrap = document.getElementById("map-wrap");
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  projection = d3.geoNaturalEarth1().scale(W/5.8).translate([W/2, H/2+H*0.04]);
+  path = d3.geoPath().projection(projection);
+  svg.attr("width",W).attr("height",H);
+  svg.append("g").append("path")
+    .datum(d3.geoGraticule().step([30,30])())
+    .attr("fill","none").attr("stroke","#0f2030").attr("stroke-width","0.4").attr("d",path);
+  let world;
+  try {
+    const r = await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json");
+    world = await r.json();
+  } catch(e) {
+    svg.append("text").attr("x","50%").attr("y","50%").attr("text-anchor","middle")
+      .attr("fill","#445566").attr("font-size","14px").text("Map data unavailable — check internet connection");
+    return;
+  }
+  const countries = topojson.feature(world, world.objects.countries);
+  const numToAlpha = {
+    "004":"AFG","008":"ALB","012":"DZA","024":"AGO","032":"ARG","036":"AUS","040":"AUT",
+    "050":"BGD","056":"BEL","068":"BOL","076":"BRA","100":"BGR","116":"KHM","120":"CMR",
+    "124":"CAN","152":"CHL","156":"CHN","170":"COL","180":"COD","188":"CRI","191":"HRV",
+    "192":"CUB","196":"CYP","203":"CZE","208":"DNK","218":"ECU","818":"EGY","222":"SLV",
+    "231":"ETH","246":"FIN","250":"FRA","276":"DEU","288":"GHA","300":"GRC","320":"GTM",
+    "332":"HTI","340":"HND","348":"HUN","356":"IND","360":"IDN","364":"IRN","368":"IRQ",
+    "372":"IRL","376":"ISR","380":"ITA","388":"JAM","392":"JPN","400":"JOR","398":"KAZ",
+    "404":"KEN","408":"PRK","410":"KOR","414":"KWT","418":"LAO","422":"LBN","430":"LBR",
+    "434":"LBY","484":"MEX","498":"MDA","504":"MAR","508":"MOZ","524":"NPL","528":"NLD",
+    "558":"NIC","562":"NER","566":"NGA","578":"NOR","586":"PAK","591":"PAN","598":"PNG",
+    "604":"PER","608":"PHL","616":"POL","620":"PRT","630":"PRI","634":"QAT","642":"ROU",
+    "643":"RUS","682":"SAU","706":"SOM","710":"ZAF","724":"ESP","729":"SDN","752":"SWE",
+    "756":"CHE","760":"SYR","764":"THA","768":"TGO","788":"TUN","792":"TUR","800":"UGA",
+    "804":"UKR","784":"ARE","826":"GBR","840":"USA","858":"URY","862":"VEN","704":"VNM",
+    "887":"YEM","716":"ZWE","834":"TZA","854":"BFA","466":"MLI","104":"MMR","458":"MYS",
+    "554":"NZL","688":"SRB","070":"BIH","807":"MKD","352":"ISL","233":"EST","428":"LVA",
+    "440":"LTU","705":"SVN","703":"SVK","528":"NLD","056":"BEL","040":"AUT","208":"DNK",
+    "360":"IDN"
+  };
+  gCountries = svg.append("g").attr("class","countries");
+  gCountries.selectAll("path")
+    .data(countries.features).enter().append("path")
+    .attr("class","country")
+    .attr("d", path)
+    .attr("stroke","#0d2030").attr("stroke-width","0.4")
+    .attr("vector-effect","non-scaling-stroke")
+    .attr("fill", feat => {
+      const iso = numToAlpha[String(feat.id).padStart(3,"0")];
+      const d = iso && D[iso];
+      return d ? riskCol(d.scores[curHorizon]) : "var(--rND)";
+    })
+    .attr("data-iso", feat => numToAlpha[String(feat.id).padStart(3,"0")] || "")
+    .on("mouseenter", function(event, feat){
+      const iso = numToAlpha[String(feat.id).padStart(3,"0")];
+      const d = iso && D[iso];
+      if(!d) return;
+      const s = d.scores[curHorizon];
+      const tt = document.getElementById("tip");
+      tt.style.display = "block";
+      document.getElementById("tt-name").textContent = d.name;
+      document.getElementById("tt-score").innerHTML = `SDT Index: <strong style="color:${riskCol(s)}">${s.toFixed(2)}</strong> · ${riskBand(s)}`;
+      document.getElementById("tt-regime").textContent = `λ=${d.λ.toFixed(2)} · ${d.λ>0.7?"Elite/Fiscal pathway":d.λ<0.3?"Demographic pathway":"Mixed pathway"}`;
+    })
+    .on("mousemove", function(event){
+      const wrap = document.getElementById("map-wrap");
+      const rect = wrap.getBoundingClientRect();
+      const tt = document.getElementById("tip");
+      tt.style.left = (event.clientX - rect.left + 14) + "px";
+      tt.style.top = (event.clientY - rect.top + 14) + "px";
+    })
+    .on("mouseleave", () => { document.getElementById("tip").style.display="none"; })
+    .on("click", function(event, feat){
+      const iso = numToAlpha[String(feat.id).padStart(3,"0")];
+      if(iso && D[iso]) selectCountry(iso);
+    });
+  svg.append("path")
+    .datum(topojson.mesh(world, world.objects.countries, (a,b)=>a!==b))
+    .attr("fill","none").attr("stroke","#0e2535").attr("stroke-width","0.5").attr("d",path);
+  updateMapColors();
+}
+
+function updateMapColors(){
+  if(!gCountries) return;
+  gCountries.selectAll("path")
+    .attr("fill", function(){
+      const iso = d3.select(this).attr("data-iso");
+      const d = iso && D[iso];
+      return d ? riskCol(d.scores[curHorizon]) : "var(--rND)";
+    })
+    .attr("stroke", function(){ return d3.select(this).attr("data-iso")===selISO?"#fff":"#0d2030"; })
+    .attr("stroke-width", function(){ return d3.select(this).attr("data-iso")===selISO?"1.5":"0.4"; });
+}
+
+// ═══════════════════════════════════════════════════════
+// WORLD BANK LIVE DATA
+// ═══════════════════════════════════════════════════════
+async function fetchWorldBank(wbCode){
+  if(liveData[wbCode]) return liveData[wbCode];
+  const indicators = {
+    "NY.GDP.PCAP.PP.CD":"GDP per capita (PPP, USD)",
+    "GC.DOD.TOTL.GD.ZS":"General govt debt (% GDP)",
+    "SI.POV.GINI":"Gini Index",
+    "SL.UEM.TOTL.ZS":"Unemployment rate (%)",
+    "SP.POP.1564.TO.ZS":"Working-age pop (15–64, %)",
+    "SP.URB.TOTL.IN.ZS":"Urban population (%)",
+    "SP.DYN.TFRT.IN":"Fertility rate"
+  };
+  const results = {};
+  const keys = Object.keys(indicators);
+  try {
+    await Promise.all(keys.map(async ind => {
+      const url = `https://api.worldbank.org/v2/country/${wbCode}/indicator/${ind}?format=json&mrv=1&per_page=1`;
+      const r = await fetch(url);
+      const j = await r.json();
+      const val = j[1]?.[0];
+      results[ind] = { label: indicators[ind], value: val?.value, year: val?.date };
+    }));
+    liveData[wbCode] = results;
+    return results;
+  } catch(e) { return null; }
+}
+
+async function renderLive(d){
+  const el = document.getElementById("live-content");
+  el.innerHTML = `<div class="live-err">Fetching World Bank data…</div>`;
+  const badge = document.getElementById("wb-badge");
+  badge.className = "live-badge loading"; badge.textContent = "LOADING…";
+
+  const data = await fetchWorldBank(d.wb);
+  if(!data){ 
+    el.innerHTML = `<div class="live-err">World Bank data unavailable for this country. Check internet connection.</div>`;
+    badge.className = "live-badge err"; badge.textContent = "WB UNAVAILABLE";
+    return;
+  }
+
+  badge.className = "live-badge ok"; badge.textContent = "LIVE WB DATA";
+  const yearSample = Object.values(data).find(v=>v.year)?.year || "–";
+  document.getElementById("wb-year").textContent = `(${yearSample})`;
+
+  // Update live note in Index tab
+  const liveNote = document.getElementById("s-live-note");
+  const debtEntry = data["GC.DOD.TOTL.GD.ZS"];
+  if(debtEntry?.value != null){
+    liveNote.textContent = `↳ Live WB: Govt debt ${debtEntry.value.toFixed(1)}% GDP (${debtEntry.year})`;
+  }
+
+  let html = `<div class="live-section">
+    <div class="live-sec-title"><span class="live-dot"></span>World Bank Live Indicators</div>
+    <div class="live-grid">`;
+
+  const entries = [
+    ["NY.GDP.PCAP.PP.CD","GDP pc (PPP)","$",""],
+    ["GC.DOD.TOTL.GD.ZS","Govt Debt","","%GDP"],
+    ["SI.POV.GINI","Gini Index","",""],
+    ["SL.UEM.TOTL.ZS","Unemployment","","%"],
+    ["SP.URB.TOTL.IN.ZS","Urbanization","","%"],
+    ["SP.DYN.TFRT.IN","Fertility Rate","",""]
+  ];
+
+  entries.forEach(([ind,label,pre,suf])=>{
+    const v = data[ind];
+    const val = v?.value != null ? (pre==="$" ? "$"+Math.round(v.value).toLocaleString() : v.value.toFixed(1)+suf) : "N/A";
+    const yr = v?.year || "–";
+    let col = "var(--text)";
+    if(ind==="GC.DOD.TOTL.GD.ZS" && v?.value > 90) col = "var(--rH)";
+    if(ind==="SL.UEM.TOTL.ZS" && v?.value > 15) col = "var(--rMH)";
+    if(ind==="SI.POV.GINI" && v?.value > 40) col = "var(--rMH)";
+    html += `<div class="live-card">
+      <div class="live-card-label">${label}</div>
+      <div class="live-card-val" style="color:${col}">${val}</div>
+      <div class="live-card-src">World Bank · ${yr}</div>
+    </div>`;
+  });
+
+  html += `</div>`;
+
+  // SDT mapping note
+  html += `<div style="font-size:9px;color:var(--muted);line-height:1.65;padding:7px 0;border-top:1px solid var(--border);">
+    <strong style="color:var(--text)">SDT mapping:</strong> Govt Debt → SFD indicator · 
+    Gini + Unemployment → MMP proxy · Urbanization → λ calibration input · 
+    Fertility → Demographic pathway signal. Values above thresholds are highlighted.
+  </div></div>`;
+
+  el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════
+// NEWS FEED — Multi-outlet RSS via multi-proxy direct XML parsing
+// No rss2json key needed. Three CORS proxies tried per feed; first success wins.
+// Primary: Reuters, AP, BBC, The Economist, Bloomberg, Foreign Policy,
+//          CNN, Noema, Al Jazeera, DW, France24, National Post + more.
+// Fallback: Guardian API (if RSS yields < 5 results).
+// NewsAPI.org (optional user key) extends coverage further.
+// ═══════════════════════════════════════════════════════
+
+// ── SDT keyword classification ──────────────────────────
+const SDT_KEYWORDS = {
+  mmp: ["wage","wages","salary","minimum wage","real wage","unemployment",
+        "jobless","layoffs","redundancies","poverty","inequality",
+        "cost of living","inflation","food prices","housing","strike",
+        "protest","unrest","riot","demonstration","workers","labour",
+        "labor","income","living standards","precarious","social unrest"],
+  emp: ["PhD","doctorate","graduate","graduates","university","credential",
+        "elite","oligarch","billionaire","wealth","top 1%","tycoon",
+        "higher education","youth unemployment","graduate unemployment",
+        "brain drain","overqualified","civil service exam","academic job",
+        "postdoc","credential inflation","wealth gap","super rich",
+        "meritocracy","class mobility","overeducated","degree holders"],
+  sfd: ["government debt","public debt","fiscal","national debt","debt crisis",
+        "IMF","austerity","budget deficit","sovereign debt","approval rating",
+        "corruption","anti-corruption","political crisis","legitimacy",
+        "scandal","political instability","cabinet","resign","governance",
+        "institutional","spending cuts","government collapse","state capacity",
+        "political scandal","trust in government"],
+  dem: ["birth rate","fertility","population growth","demographic","urbanization",
+        "rural migration","migration","young population","youth","age structure",
+        "population aging","aging population","depopulation","emigration",
+        "urban growth","city growth","internal migration","rural exodus",
+        "youth bulge","population decline","shrinking population"]
+};
+
+// ── Feed registry ───────────────────────────────────────
+// Each feed: { name, url, regions[], bias }
+// regions: "global" or ISO3 codes where this feed is especially relevant
+// bias: which SDT modules this outlet tends to cover well
+const FEEDS = [
+  // ── Global wire services ──
+  { name:"AP News",          url:"https://feeds.apnews.com/rss/apf-topnews",                    regions:["global"], bias:["mmp","sfd"] },
+  { name:"AP Business",      url:"https://feeds.apnews.com/rss/apf-business",                   regions:["global"], bias:["mmp","emp","sfd"] },
+  { name:"Reuters World",    url:"https://feeds.reuters.com/reuters/worldNews",                  regions:["global"], bias:["mmp","sfd"] },
+  { name:"Reuters Business", url:"https://feeds.reuters.com/reuters/businessNews",               regions:["global"], bias:["mmp","emp","sfd"] },
+  { name:"BBC World",        url:"https://feeds.bbci.co.uk/news/world/rss.xml",                  regions:["global"], bias:["mmp","sfd","dem"] },
+  { name:"BBC Business",     url:"https://feeds.bbci.co.uk/news/business/rss.xml",               regions:["global"], bias:["mmp","emp","sfd"] },
+  { name:"Al Jazeera",       url:"https://www.aljazeera.com/xml/rss/all.xml",                    regions:["global","EGY","IRN","IRQ","SYR","YEM","SAU","PAK","AFG","MAR","DZA","LBY","SDN","NGA","ETH"], bias:["mmp","sfd","dem"] },
+
+  // ── Premium analytical outlets (SDT-ideal) ──
+  { name:"The Economist",    url:"https://www.economist.com/latest/rss.xml",                     regions:["global"], bias:["emp","sfd","mmp"] },
+  { name:"Foreign Policy",   url:"https://foreignpolicy.com/feed/",                              regions:["global"], bias:["sfd","emp"] },
+  { name:"Bloomberg Markets",url:"https://feeds.bloomberg.com/markets/news.rss",                 regions:["global"], bias:["mmp","emp","sfd"] },
+  { name:"Bloomberg Econ",   url:"https://feeds.bloomberg.com/economics/news.rss",               regions:["global"], bias:["mmp","sfd","emp"] },
+  { name:"Noema Magazine",   url:"https://www.noemamag.com/feed/",                               regions:["global"], bias:["emp","dem","sfd"] },
+  { name:"Unherd",           url:"https://unherd.com/feed/",                                     regions:["global"], bias:["emp","sfd","dem"] },
+  { name:"The Atlantic",     url:"https://www.theatlantic.com/feed/all/",                        regions:["global","USA"], bias:["emp","sfd","mmp"] },
+  { name:"Quillette",        url:"https://quillette.com/feed/",                                  regions:["global"], bias:["emp","sfd"] },
+
+  // ── CNN ──
+  { name:"CNN World",        url:"https://rss.cnn.com/rss/edition_world.rss",                   regions:["global"], bias:["mmp","sfd"] },
+  { name:"CNN Business",     url:"https://rss.cnn.com/rss/money_news_international.rss",         regions:["global"], bias:["mmp","emp","sfd"] },
+
+  // ── Broadcast / International ──
+  { name:"DW English",       url:"https://rss.dw.com/rdf/rss-en-all",                           regions:["global","DEU","TUR","RUS","UKR","SRB","BGR","ROU","HUN","POL"], bias:["mmp","sfd"] },
+  { name:"France24",         url:"https://www.france24.com/en/rss",                              regions:["global","FRA","MAR","DZA","TUN","SEN","MLI","BFA","NER","COD"], bias:["mmp","sfd","dem"] },
+  { name:"RFI English",      url:"https://www.rfi.fr/en/rss",                                    regions:["global","FRA","MAR","DZA","TUN","SEN","MLI","BFA","NER","COD","CMR"], bias:["mmp","sfd","dem"] },
+
+  // ── Asia-Pacific ──
+  { name:"Japan Times",      url:"https://www.japantimes.co.jp/feed/",                           regions:["JPN","KOR","CHN","PRK"],           bias:["mmp","emp","sfd"] },
+  { name:"SCMP",             url:"https://www.scmp.com/rss/91/feed",                             regions:["CHN","HKG","TWN","JPN","KOR","VNM","MYS","IDN"], bias:["emp","sfd","mmp"] },
+  { name:"The Hindu",        url:"https://www.thehindu.com/feeder/default.rss",                  regions:["IND","PAK","BGD","LKA"],           bias:["mmp","dem","sfd"] },
+  { name:"Nikkei Asia",      url:"https://asia.nikkei.com/rss/feed/nar",                         regions:["JPN","CHN","KOR","IDN","THA","VNM","MYS"], bias:["emp","sfd","mmp"] },
+
+  // ── Americas ──
+  { name:"National Post",    url:"https://nationalpost.com/feed/",                               regions:["CAN","USA"],                       bias:["mmp","sfd","emp"] },
+  { name:"Buenos Aires H.",  url:"https://www.buenosairesherald.com/feed",                       regions:["ARG","CHL","URY","PRY","BOL"],     bias:["mmp","sfd"] },
+
+  // ── Europe ──
+  { name:"Euronews",         url:"https://feeds.feedburner.com/euronews/en/news/",               regions:["global","FRA","DEU","ITA","ESP","GRC","POL","HUN","ROU","BGR","SRB"], bias:["mmp","sfd"] },
+  { name:"Politico EU",      url:"https://www.politico.eu/feed/",                                regions:["FRA","DEU","ITA","ESP","GBR","POL","HUN","ROU","BEL","NLD","AUT"], bias:["sfd","emp"] },
+
+  // ── Middle East / Africa ──
+  { name:"Middle East Eye",  url:"https://www.middleeasteye.net/rss",                            regions:["ISR","IRN","IRQ","SYR","YEM","SAU","EGY","TUR","JOR","LBN","LBY"], bias:["mmp","sfd","dem"] },
+  { name:"Africa Report",    url:"https://www.theafricareport.com/feed/",                        regions:["NGA","ETH","ZAF","KEN","TZA","GHA","MOZ","MLI","BFA","NER","SDN","SOM","COD","DZA","MAR"], bias:["mmp","dem","sfd"] },
+];
+
+// ── Guardian country tag map ─────────────────────────────
+const GUARDIAN_COUNTRY_TAG = {
+  "USA":"world/united-states","GBR":"world/united-kingdom","CHN":"world/china",
+  "RUS":"world/russia","JPN":"world/japan","KOR":"world/south-korea",
+  "PRK":"world/north-korea","COD":"world/democratic-republic-of-congo",
+  "IRN":"world/iran","SYR":"world/syria","YEM":"world/yemen",
+  "IRQ":"world/iraq","SAU":"world/saudi-arabia","ISR":"world/israel",
+  "EGY":"world/egypt","TUR":"world/turkey","UKR":"world/ukraine",
+  "NGA":"world/nigeria","ETH":"world/ethiopia","ZAF":"world/south-africa",
+  "KEN":"world/kenya","TZA":"world/tanzania","GHA":"world/ghana",
+  "NER":"world/niger","MLI":"world/mali","DZA":"world/algeria",
+  "MAR":"world/morocco","LBY":"world/libya","SDN":"world/sudan",
+  "SOM":"world/somalia","MOZ":"world/mozambique","BFA":"world/burkina-faso",
+  "FRA":"world/france","DEU":"world/germany","ITA":"world/italy",
+  "ESP":"world/spain","POL":"world/poland","GRC":"world/greece",
+  "HUN":"world/hungary","ROU":"world/romania","SRB":"world/serbia",
+  "HRV":"world/croatia","BGR":"world/bulgaria","MDA":"world/moldova",
+  "SWE":"world/sweden","NOR":"world/norway","DNK":"world/denmark",
+  "FIN":"world/finland","ISL":"world/iceland","EST":"world/estonia",
+  "LVA":"world/latvia","LTU":"world/lithuania","AUT":"world/austria",
+  "BEL":"world/belgium","NLD":"world/netherlands","PRT":"world/portugal",
+  "CZE":"world/czech-republic","SVK":"world/slovakia",
+  "IND":"world/india","PAK":"world/pakistan","AFG":"world/afghanistan",
+  "BGD":"world/bangladesh","MMR":"world/myanmar","THA":"world/thailand",
+  "IDN":"world/indonesia","PHL":"world/philippines","VNM":"world/vietnam",
+  "MYS":"world/malaysia","KAZ":"world/kazakhstan",
+  "BRA":"world/brazil","ARG":"world/argentina","VEN":"world/venezuela",
+  "COL":"world/colombia","PER":"world/peru","CHL":"world/chile",
+  "MEX":"world/mexico","CAN":"world/canada","AUS":"world/australia",
+  "NZL":"world/new-zealand","BOL":"world/bolivia","ECU":"world/ecuador",
+};
+
+// ── Guardian SDT query per module ───────────────────────
+const NEWS_MODULE_Q = {
+  mmp: '"unemployment" OR "wages" OR "strike" OR "protest" OR "poverty" OR "inflation" OR "layoffs" OR "housing crisis"',
+  emp: '"graduates" OR "PhD" OR "inequality" OR "billionaire" OR "youth unemployment" OR "brain drain" OR "credential" OR "university"',
+  sfd: '"debt" OR "deficit" OR "corruption" OR "austerity" OR "IMF" OR "approval rating" OR "political crisis" OR "government"',
+  dem: '"urbanization" OR "migration" OR "birth rate" OR "fertility" OR "demographic" OR "aging population" OR "emigration"',
+  all: '"unemployment" OR "graduates" OR "debt" OR "migration" OR "wages" OR "protest" OR "poverty" OR "inequality" OR "corruption"'
+};
+
+// ── Country name aliases ─────────────────────────────────
+const COUNTRY_ALIASES = {
+  "USA":["United States","US ","America "],"GBR":["United Kingdom","Britain","UK "],
+  "CHN":["China","Chinese"],"RUS":["Russia","Russian"],"JPN":["Japan","Japanese"],
+  "KOR":["South Korea","Korean"],"PRK":["North Korea","DPRK"],"COD":["Congo","DRC"],
+  "IRN":["Iran","Iranian"],"SYR":["Syria","Syrian"],"YEM":["Yemen","Yemeni"],
+  "IRQ":["Iraq","Iraqi"],"SAU":["Saudi Arabia","Saudi"],"ISR":["Israel","Israeli"],
+  "EGY":["Egypt","Egyptian"],"TUR":["Turkey","Turkish","Türkiye"],
+  "UKR":["Ukraine","Ukrainian"],"NGA":["Nigeria","Nigerian"],
+  "ETH":["Ethiopia","Ethiopian"],"ZAF":["South Africa"],"KEN":["Kenya","Kenyan"],
+  "TZA":["Tanzania"],"GHA":["Ghana","Ghanaian"],"NER":["Niger","Nigerien"],
+  "MLI":["Mali","Malian"],"DZA":["Algeria","Algerian"],"MAR":["Morocco","Moroccan"],
+  "LBY":["Libya","Libyan"],"SDN":["Sudan","Sudanese"],"SOM":["Somalia","Somali"],
+  "MOZ":["Mozambique"],"BFA":["Burkina Faso"],"COL":["Colombia","Colombian"],
+  "VEN":["Venezuela","Venezuelan"],"ARG":["Argentina","Argentine"],
+  "BRA":["Brazil","Brazilian"],"MEX":["Mexico","Mexican"],"CHL":["Chile","Chilean"],
+  "PER":["Peru","Peruvian"],"CAN":["Canada","Canadian"],"AUS":["Australia","Australian"],
+  "FRA":["France","French"],"DEU":["Germany","German"],"ITA":["Italy","Italian"],
+  "ESP":["Spain","Spanish"],"POL":["Poland","Polish"],"GRC":["Greece","Greek"],
+  "HUN":["Hungary","Hungarian"],"ROU":["Romania","Romanian"],"SRB":["Serbia","Serbian"],
+  "HRV":["Croatia","Croatian"],"BGR":["Bulgaria","Bulgarian"],"MDA":["Moldova"],
+  "SWE":["Sweden","Swedish"],"NOR":["Norway","Norwegian"],"DNK":["Denmark","Danish"],
+  "FIN":["Finland","Finnish"],"ISL":["Iceland","Icelandic"],"EST":["Estonia"],
+  "LVA":["Latvia"],"LTU":["Lithuania"],"AUT":["Austria","Austrian"],
+  "BEL":["Belgium","Belgian"],"NLD":["Netherlands","Dutch"],"PRT":["Portugal","Portuguese"],
+  "CZE":["Czech Republic","Czechia"],"SVK":["Slovakia"],"SVN":["Slovenia"],
+  "IND":["India","Indian"],"PAK":["Pakistan","Pakistani"],"AFG":["Afghanistan","Afghan"],
+  "BGD":["Bangladesh"],"MMR":["Myanmar","Burma"],"THA":["Thailand","Thai"],
+  "IDN":["Indonesia","Indonesian"],"PHL":["Philippines","Filipino"],
+  "VNM":["Vietnam","Vietnamese"],"MYS":["Malaysia","Malaysian"],"KAZ":["Kazakhstan"],
+  "NZL":["New Zealand"],"BOL":["Bolivia"],"ECU":["Ecuador"],"ALB":["Albania"],
+};
+
+// ── Article classification ───────────────────────────────
+function classifyArticle(title, desc){
+  const text = ((title||"")+" "+(desc||"")).toLowerCase();
+  const scores = {mmp:0, emp:0, sfd:0, dem:0};
+  for(const [mod, kws] of Object.entries(SDT_KEYWORDS)){
+    for(const kw of kws){ if(text.includes(kw.toLowerCase())) scores[mod]++; }
+  }
+  return Object.entries(scores).sort((a,b)=>b[1]-a[1])[0]?.[0] || "sfd";
+}
+
+// Check article mentions the country in title or description
+function mentionsCountry(article, d){
+  const aliases = COUNTRY_ALIASES[d.wb] || [d.name];
+  const text = ((article.title||"")+" "+(article.desc||"")).toLowerCase();
+  return aliases.some(a => text.includes(a.toLowerCase()));
+}
+
+// Check article has at least one SDT keyword
+function hasSDTSignal(article){
+  const text = ((article.title||"")+" "+(article.desc||"")).toLowerCase();
+  const all = Object.values(SDT_KEYWORDS).flat();
+  return all.some(kw => text.includes(kw.toLowerCase()));
+}
+
+// ── News cache ───────────────────────────────────────────
+const newsCache = {};
+let newsApiKey = "";
+
+// ── Multi-proxy RSS fetch (no API key needed) ───────────────────────────
+// Tries multiple CORS proxies; first success wins per feed (no rate-limited API).
+const RSS_PROXIES = [
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+];
+
+async function fetchRSSFeed(feed){
+  for(const makeProxy of RSS_PROXIES){
+    try{
+      const r = await fetch(makeProxy(feed.url), {signal: AbortSignal.timeout(9000)});
+      if(!r.ok) continue;
+      let text = await r.text();
+      // allorigins wraps in JSON; corsproxy returns raw XML
+      try{ const j = JSON.parse(text); if(j.contents) text = j.contents; }catch(e){}
+      if(!text || !text.includes("<item")) continue;
+      const xml = new DOMParser().parseFromString(text, "text/xml");
+      const items = Array.from(xml.querySelectorAll("item")).slice(0, 30);
+      return items.map(item => {
+        const title = (item.querySelector("title")?.textContent||"").replace(/<[^>]*>/g,"").trim();
+        const link  = (item.querySelector("link")?.textContent||"").trim()
+                   || item.querySelector("link")?.getAttribute("href")||"";
+        const pubDate = item.querySelector("pubDate")?.textContent
+                     || item.querySelector("published")?.textContent||"";
+        const desc = (item.querySelector("description")?.textContent||"")
+                       .replace(/<[^>]*>/g,"").trim().substring(0,200);
+        const date = pubDate ? new Date(pubDate).toISOString().substring(0,10) : "";
+        return { title, url: link, date, source: feed.name, desc };
+      }).filter(a => a.title && a.url);
+    }catch(e){ continue; }
+  }
+  throw new Error(`All proxies failed for ${feed.name}`);
+}
+
+// ── Guardian API fetch ───────────────────────────────────
+async function fetchGuardian(d){
+  const countryTag = GUARDIAN_COUNTRY_TAG[d.wb];
+  const moduleQ    = NEWS_MODULE_Q[newsFilter] || NEWS_MODULE_Q.all;
+  const aliases    = COUNTRY_ALIASES[d.wb] || [d.name];
+  const primary    = aliases[0];
+  const q = `"${primary}" AND (${moduleQ})`;
+  const params = new URLSearchParams({
+    q, "from-date":"2022-01-01","page-size":"30",
+    "show-fields":"headline,trailText","order-by":"newest",
+    "api-key":"test", format:"json"
+  });
+  if(countryTag) params.append("tag", countryTag);
+  const r = await fetch(`https://content.guardianapis.com/search?${params}`,
+    {signal: AbortSignal.timeout(10000)});
+  if(!r.ok) throw new Error(`Guardian ${r.status}`);
+  const j = await r.json();
+  if(j.response?.status !== "ok") throw new Error("Guardian error");
+  return (j.response?.results||[]).map(a => ({
+    title:  a.webTitle,
+    url:    a.webUrl,
+    date:   (a.webPublicationDate||"").substring(0,10),
+    source: "The Guardian",
+    desc:   (a.fields?.trailText||"").replace(/<[^>]*>/g,"").substring(0,200),
+  }));
+}
+
+// ── NewsAPI fetch (optional key) ─────────────────────────
+async function fetchNewsAPI(d, key){
+  const aliases = COUNTRY_ALIASES[d.wb]||[d.name];
+  const primary = aliases[0];
+  const moduleQ = NEWS_MODULE_Q[newsFilter]||NEWS_MODULE_Q.all;
+  const params = new URLSearchParams({
+    q:`"${primary}" AND (${moduleQ})`,
+    from:"2022-01-01", language:"en",
+    sortBy:"publishedAt", pageSize:"20", apiKey:key
+  });
+  const r = await fetch(`https://newsapi.org/v2/everything?${params}`,
+    {signal: AbortSignal.timeout(10000)});
+  if(!r.ok) throw new Error(`NewsAPI ${r.status}`);
+  const j = await r.json();
+  if(j.status!=="ok") throw new Error(j.message||"NewsAPI error");
+  return (j.articles||[]).map(a => ({
+    title:  a.title||"",
+    url:    a.url||"",
+    date:   (a.publishedAt||"").substring(0,10),
+    source: a.source?.name||"NewsAPI",
+    desc:   (a.description||"").substring(0,200),
+  }));
+}
+
+// ── Select relevant feeds for a country ─────────────────
+function selectFeeds(d){
+  // Always include global feeds
+  const relevant = FEEDS.filter(f =>
+    f.regions.includes("global") || f.regions.includes(d.wb)
+  );
+  // Prioritise region-specific feeds, then fill with global ones — cap at 14
+  const specific = relevant.filter(f => !f.regions.includes("global"));
+  const global_feeds = relevant.filter(f => f.regions.includes("global"));
+  const selected = [...specific, ...global_feeds].slice(0, 14);
+  return selected;
+}
+
+// ── Main orchestrator ────────────────────────────────────
+async function fetchGdelt(d){ // name kept for compatibility
+  const el = document.getElementById("news-content");
+  const aliases = COUNTRY_ALIASES[d.wb]||[d.name];
+  const primary = aliases[0];
+
+  const cacheKey = `${d.wb}_${newsFilter}`;
+  if(newsCache[cacheKey]){ renderNews(newsCache[cacheKey], d); return; }
+
+  el.innerHTML = `<div class="news-loading">
+    Fetching news for <strong>${d.name}</strong> from multiple outlets…
+    <div style="margin-top:5px;font-size:9px;color:var(--muted)">Reuters · AP · BBC · The Economist · Bloomberg · Foreign Policy · CNN · Noema · Al Jazeera + more</div>
+  </div>`;
+
+  let allArticles = [];
+  const successSources = new Set();
+  const failedSources = [];
+
+  // 1. RSS feeds in parallel via multi-proxy (primary sources)
+  const feeds = selectFeeds(d);
+  const rssResults = await Promise.allSettled(
+    feeds.map(f => fetchRSSFeed(f).then(items => ({feed:f, items})))
+  );
+  for(const result of rssResults){
+    if(result.status === "fulfilled"){
+      const {feed, items} = result.value;
+      allArticles = allArticles.concat(items);
+      if(items.length) successSources.add(feed.name);
+    } else {
+      failedSources.push(result.reason?.message||"unknown");
+    }
+  }
+
+  // 2. NewsAPI (optional key)
+  if(newsApiKey){
+    try {
+      const res = await fetchNewsAPI(d, newsApiKey);
+      allArticles = allArticles.concat(res);
+      if(res.length) successSources.add("NewsAPI");
+    } catch(e){ /* continue */ }
+  }
+
+  // 3. Guardian fallback (only if RSS sources yielded very few results)
+  if(allArticles.length < 5){
+    try {
+      const res = await fetchGuardian(d);
+      allArticles = allArticles.concat(res);
+      if(res.length) successSources.add("The Guardian");
+    } catch(e){ /* continue */ }
+  }
+
+  // Filter: must mention country AND have an SDT signal
+  allArticles = allArticles.filter(a =>
+    mentionsCountry(a, d) && hasSDTSignal(a)
+  );
+
+  // Apply module filter
+  if(newsFilter !== "all"){
+    allArticles = allArticles.filter(a =>
+      classifyArticle(a.title, a.desc) === newsFilter
+    );
+  }
+
+  // Deduplicate by URL
+  const seen = new Set();
+  allArticles = allArticles.filter(a => {
+    if(!a.url || seen.has(a.url)) return false;
+    seen.add(a.url); return true;
+  });
+
+  // Sort by date (newest first)
+  allArticles.sort((a,b) => (b.date||"").localeCompare(a.date||""));
+
+  if(!allArticles.length){
+    el.innerHTML = `<div class="news-loading">
+      <strong style="color:var(--text)">No SDT-relevant articles found for ${d.name}.</strong><br><br>
+      ${successSources.size > 0 
+        ? `Fetched from: ${[...successSources].join(", ")} — but no articles matched the country + SDT filters.`
+        : "Could not reach news sources. Check your internet connection."
+      }<br><br>
+      Try changing the module filter (MMP/EMP/SFD/DEM) or browse directly:<br>
+      <a href="https://apnews.com/search?q=${encodeURIComponent(primary)}" 
+         target="_blank" style="color:var(--accent)">→ AP News: ${d.name}</a><br>
+      <a href="https://www.economist.com/search?q=${encodeURIComponent(primary)}" 
+         target="_blank" style="color:var(--accent)">→ The Economist: ${d.name}</a><br>
+      <a href="https://foreignpolicy.com/?s=${encodeURIComponent(primary)}" 
+         target="_blank" style="color:var(--accent)">→ Foreign Policy: ${d.name}</a>
+    </div>`;
+    return;
+  }
+
+  const result = {articles: allArticles, sources: [...successSources]};
+  newsCache[cacheKey] = result;
+  renderNews(result, d);
+}
+
+// ── Render news items ────────────────────────────────────
+function renderNews({articles, sources}, d){
+  const el = document.getElementById("news-content");
+
+  const toShow = newsFilter === "all"
+    ? articles
+    : articles.filter(a => classifyArticle(a.title, a.desc) === newsFilter);
+
+  if(!toShow.length){
+    el.innerHTML = `<div class="news-loading">
+      No <strong>${newsFilter.toUpperCase()}</strong>-tagged articles for ${d.name}. Try "All".
+    </div>`;
+    return;
+  }
+
+  const modLabels = {
+    mmp:"MMP — Mass Mobilisation", emp:"EMP — Elite/Credential",
+    sfd:"SFD — Fiscal/State",      dem:"DEM — Demographic"
+  };
+  const modShort = {mmp:"MMP", emp:"EMP", sfd:"SFD", dem:"DEM"};
+
+  const srcCount = sources.length;
+  const srcStr = srcCount > 3
+    ? `${sources.slice(0,3).join(", ")} +${srcCount-3} more`
+    : sources.join(", ");
+
+  el.innerHTML =
+    `<div style="font-size:9px;color:var(--muted);margin-bottom:8px;">
+      ${toShow.length} articles · ${d.name} · 2022–present<br>
+      <span style="color:var(--live)">●</span> Sources: ${srcStr}
+    </div>` +
+    toShow.slice(0, 25).map(a => {
+      const mod = classifyArticle(a.title, a.desc);
+      return `<div class="news-item">
+        <a href="${a.url||"#"}" target="_blank" rel="noopener noreferrer">
+          <div class="news-head">
+            <div class="news-title">${a.title||"(no title)"}</div>
+            <span class="news-module ${mod}" title="${modLabels[mod]}">${modShort[mod]}</span>
+          </div>
+          <div class="news-meta">${a.date} · <strong>${a.source}</strong></div>
+          ${a.desc ? `<div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.5;">${a.desc.substring(0,130)}…</div>` : ""}
+        </a>
+      </div>`;
+    }).join("");
+}
+
+// ═══════════════════════════════════════════════════════
+// LITERATURE
+// ═══════════════════════════════════════════════════════
+function renderLiterature(d){
+  const el = document.getElementById("lit-content");
+  const relevant = LITERATURE.filter(p =>
+    p.countries.includes("all") || p.countries.includes(d.wb)
+  );
+  const filtered = litFilter === "all" ? relevant : relevant.filter(p => p.modules.includes(litFilter));
+  if(!filtered.length){ el.innerHTML = `<div style="font-size:10px;color:var(--muted);padding:10px;">No papers match this filter for ${d.name}.</div>`; return; }
+  el.innerHTML = filtered.map(p => {
+    const tagHtml = p.modules.map(m => `<span class="lit-tag">${m.toUpperCase()}</span>`).join("");
+    const doiHtml = p.doi ? `<div class="lit-doi">DOI: <a href="${p.url}" target="_blank">${p.doi}</a></div>` :
+      p.url ? `<div class="lit-doi"><a href="${p.url}" target="_blank">View publication →</a></div>` :
+      `<div class="lit-doi" style="color:var(--muted)">Working paper — not yet publicly available</div>`;
+    return `<div class="lit-item">
+      <div class="lit-title">${p.title}</div>
+      <div class="lit-authors">${p.authors}</div>
+      <div class="lit-journal">${p.journal}</div>
+      <div class="lit-tags">${tagHtml}</div>
+      ${doiHtml}
+      <div style="font-size:9px;color:var(--muted);margin-top:5px;line-height:1.5;">${p.abstract}</div>
+    </div>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════════════
+// SELECT COUNTRY
+// ═══════════════════════════════════════════════════════
+function selectCountry(iso){
+  selISO = iso; updateMapColors();
+  const d = D[iso];
+  document.getElementById("ph").style.display = "none";
+  const pd = document.getElementById("pd");
+  pd.style.display = "flex"; pd.style.flexDirection = "column"; pd.style.height = "100%"; pd.style.overflow = "hidden";
+  document.getElementById("p-cname").textContent = d.name;
+  document.getElementById("p-cmeta").textContent = `λ=${d.λ.toFixed(2)} · ${d.λ>=0.70?"Elite/Fiscal pathway":d.λ<=0.30?"Demographic pathway":"Mixed pathway"} · ${iso}`;
+  document.getElementById("wb-badge").className = "live-badge loading"; document.getElementById("wb-badge").textContent = "LOADING…";
+  document.getElementById("wb-year").textContent = "";
+  document.getElementById("s-live-note").textContent = "";
+  renderIdx(d);
+  renderCmp(d);
+  renderDat(d);
+  renderLiterature(d);
+  renderHistory(d);
+  resetAI(d);
+  // Async loads
+  renderLive(d);
+  fetchGdelt(d);
+}
+
+// ═══════════════════════════════════════════════════════
+// INDEX TAB
+// ═══════════════════════════════════════════════════════
+function renderIdx(d){
+  const s = d.scores[curHorizon], c = riskCol(s);
+  document.getElementById("s-big").textContent = s.toFixed(2);
+  document.getElementById("s-big").style.color = c;
+  document.getElementById("s-band").textContent = riskBand(s);
+  document.getElementById("s-band").style.color = c;
+  document.getElementById("s-lambda").textContent = `λ=${d.λ.toFixed(2)} · ${d.λ>=0.70?"Elite/Fiscal "+Math.round(d.λ*100)+"%":d.λ<=0.30?"Demographic "+Math.round((1-d.λ)*100)+"%":Math.round(d.λ*100)+"% Elite/Fiscal / "+Math.round((1-d.λ)*100)+"% Demographic"}`;
+  // Bars
+  const row = document.getElementById("hb-row"), lbls = document.getElementById("hb-lbls");
+  row.innerHTML = ""; lbls.innerHTML = "";
+  const mx = Math.max(...d.scores, 0.8);
+  d.scores.forEach((sc,i)=>{
+    const bh = Math.round((sc/mx)*44), cih = Math.round((d.ci[i]/mx)*44);
+    const col = document.createElement("div"); col.className="hb-col";
+    const bar = document.createElement("div"); bar.className="hb-bar";
+    bar.style.cssText=`height:${bh}px;background:${riskCol(sc)};opacity:${i===curHorizon?1:.5};outline:${i===curHorizon?"1px solid rgba(255,255,255,.4)":"none"}`;
+    const ci = document.createElement("div"); ci.className="hb-ci";
+    ci.style.cssText=`height:${cih}px;top:-${Math.ceil(cih/2)}px`;
+    bar.appendChild(ci); col.appendChild(bar); row.appendChild(col);
+    const l = document.createElement("div"); l.className="hb-lbl"+(i===curHorizon?" cur":"");
+    l.textContent=HLabels[i]; lbls.appendChild(l);
+  });
+  // Threshold note
+  let nt = "";
+  if(d.λ < 0.4){
+    const yug = d.K.yug;
+    if(yug>=45) nt=`<strong>CRITICAL (SDT — Demographic):</strong> Young urban population growth ≥45%/5yr. Empirical cross-national analysis (1960–2005): 0 of 34 countries above this threshold avoided major violent conflict.`;
+    else if(yug>=30) nt=`<strong>HIGH (SDT — Demographic):</strong> Young urban growth ${yug}%/5yr. Cross-national analysis: only ~26% of countries in this zone avoided major conflict; ~25% experienced very high intensity.`;
+    else if(yug>=20) nt=`<strong>MEDIUM (SDT — Demographic):</strong> Young urban growth ${yug}%/5yr. ~46% probability of significant conflict onset.`;
+    else nt=`<strong>LOW (SDT — Demographic):</strong> Young urban growth ${yug}%/5yr. Historically safe zone.`;
+  } else if(d.λ > 0.7){
+    if(s>=0.68) nt=`<strong>DISINTEGRATIVE PHASE (SDT — Elite/Fiscal):</strong> Multiple stress indicators co-elevated. Elite overproduction, wage compression, and legitimacy deficit all in critical range. Secular cycle model projects elevated instability for 10–20 years.`;
+    else if(s>=0.50) nt=`<strong>ELEVATED ELITE/FISCAL STRESS (SDT):</strong> One or more principal indicators above threshold. Risk of counter-elite mobilisation within 5–10 years.`;
+    else nt=`<strong>INTEGRATIVE PHASE (SDT — Elite/Fiscal):</strong> Indicators below stress thresholds. Relative wages, elite density, and fiscal position within stable ranges.`;
+  } else {
+    nt=`<strong>MIXED REGIME (λ=${d.λ.toFixed(2)}):</strong> Both demographic (young urban pressure) and elite/fiscal stress pathways active.`;
+  }
+  document.getElementById("tnote").innerHTML = nt;
+  // Pathway
+  let pw = "";
+  if(d.λ<0.4) pw=`<strong style="color:#c97bff">Demographic Modernisation Pathway</strong> (weight ${Math.round((1-d.λ)*100)}%)<br>Malthusian escape → death-rate decline → youth bulge → rural-urban migration → explosive growth of young urban population → political radicalization.<br><br><em>YB×(1−U) = ${d.K.ybu.toFixed(2)} · Young urban growth = ${d.K.yug}%/5yr</em>`;
+  else if(d.λ>0.7) pw=`<strong style="color:#6bffb8">Elite/Fiscal Stress Pathway</strong> (weight ${Math.round(d.λ*100)}%)<br>Elite overproduction → counter-elite competition → wealth pump → relative wage decline → popular immiseration → legitimacy crisis → fiscal stress → state crisis.<br><br><em>RelWage=${d.T.rw.toFixed(2)} · EliteOP=${d.T.ep.toFixed(2)} · Fiscal=${d.T.fs.toFixed(2)} · Legit=${d.T.lg.toFixed(2)}</em>`;
+  else pw=`<strong style="color:#ffd166">Mixed Regime</strong> (λ=${d.λ.toFixed(2)})<br>Both pathways active. Demographic channel in urbanising periphery; Elite/Fiscal channel in modernised core.<br><br><em>Demog: YB×(1−U)=${d.K.ybu.toFixed(2)} · Elite/Fiscal: EliteOP=${d.T.ep.toFixed(2)}</em>`;
+  document.getElementById("pathway").innerHTML = pw;
+}
+
+// ═══════════════════════════════════════════════════════
+// COMPONENTS TAB
+// ═══════════════════════════════════════════════════════
+function renderCmp(d){
+  const el = document.getElementById("cmp-content"); el.innerHTML="";
+  const addSec=(t)=>{const s=document.createElement("div");s.className="comp-sec";s.textContent=t;el.appendChild(s);};
+  const addRow=(name,val,col)=>{
+    const r=document.createElement("div");r.className="comp-row";
+    r.innerHTML=`<div class="comp-name">${name}</div><div class="comp-bg"><div class="comp-fill" style="width:${Math.round(val*100)}%;background:${col}"></div></div><div class="comp-val">${val.toFixed(2)}</div>`;
+    el.appendChild(r);
+  };
+  addSec(`Elite/Fiscal Indicators (weight ${Math.round(d.λ*100)}%)`);
+  addRow("Rel. Wage compress.",d.T.rw,"rgba(107,255,184,.8)");
+  addRow("Elite Overprod.",d.T.ep,"rgba(107,255,184,.8)");
+  addRow("Fiscal Stress",d.T.fs,"rgba(107,255,184,.8)");
+  addRow("Legit. Deficit",d.T.lg,"rgba(107,255,184,.8)");
+  addSec(`Demographic Indicators (weight ${Math.round((1-d.λ)*100)}%)`);
+  addRow("Youth Bulge (YB)",d.K.yb,"rgba(201,123,255,.8)");
+  addRow("Urbanization (U)",d.K.u,"rgba(201,123,255,.8)");
+  addRow("YB×(1−U)",d.K.ybu,"rgba(201,123,255,.8)");
+  addRow(`YU growth (${d.K.yug}%/5yr)`,Math.min(d.K.yug/60,1),"rgba(201,123,255,.8)");
+  addSec("Projected Index by Horizon (95% CI)");
+  d.scores.forEach((sc,i)=>{
+    const r=document.createElement("div");r.className="comp-row";
+    const lo=(sc-d.ci[i]).toFixed(2), hi=(sc+d.ci[i]).toFixed(2);
+    r.innerHTML=`<div class="comp-name">${HLabels[i]}</div><div class="comp-bg"><div class="comp-fill" style="width:${Math.round(sc*100)}%;background:${riskCol(sc)}"></div></div><div class="comp-val" style="width:80px;font-size:8px">[${lo}–${hi}]</div>`;
+    el.appendChild(r);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// DATA SOURCES TAB
+// ═══════════════════════════════════════════════════════
+function renderDat(d){
+  const el = document.getElementById("dat-content"); el.innerHTML="";
+  const sec=(t)=>{const s=document.createElement("div");s.className="comp-sec";s.textContent=t;el.appendChild(s);};
+  const box=(title,text,isProxy)=>{
+    const b=document.createElement("div");b.className="dsrc";
+    b.innerHTML=`<strong>${title}${isProxy?' <span style="color:var(--rMH);font-size:8px">[PROXY]</span>':''}</strong><br>${text}`;
+    el.appendChild(b);
+    el.appendChild(Object.assign(document.createElement("div"),{style:"height:6px"}));
+  };
+  sec("Elite/Fiscal Indicators — Data Sources");
+  box("Relative Wage",d.proxies.rw, d.proxies.rw.includes("PROXY")||d.proxies.rw.includes("ESTIMATED"));
+  box("Elite Overproduction",d.proxies.ep, d.proxies.ep.toLowerCase().includes("proxy")||d.proxies.ep.includes("estimated"));
+  box("Fiscal Stress",d.proxies.fs, d.proxies.fs.includes("PROXY")||d.proxies.fs.includes("ESTIMATED"));
+  box("Legitimacy Deficit",d.proxies.lg, d.proxies.lg.includes("PROXY")||d.proxies.lg.includes("ESTIMATED"));
+  sec("Demographic Indicators — Data Sources");
+  const kd=document.createElement("div");kd.className="dsrc";
+  kd.innerHTML=`<strong>Youth Bulge, Urbanization, YB×(1−U), Young Urban Growth</strong><br>
+    UN Population Division World Urbanization Prospects (2022) + UN World Population Prospects (2022). Age-group projections for 15–24 cohort; urban/rural split. <strong>Direct — UN open data.</strong> Risk thresholds derived from cross-national empirical analysis (1960–2005).`;
+  el.appendChild(kd);
+  sec("λ Modernity Index");
+  const ld=document.createElement("div");ld.className="dsrc";
+  ld.innerHTML=`<strong>Continuous modernity weight λ ∈ [0,1]</strong><br>
+    PCA composite of: log(GDP per capita, PPP) · urbanization rate (UN WUP 2022) · V-Dem state capacity score (V-Dem v13) · Fragile States Index (Fund for Peace 2022). Higher λ → Elite/Fiscal pathway dominant; lower λ → Demographic pathway dominant.`;
+  el.appendChild(ld);
+  sec("Live Data");
+  const livd=document.createElement("div");livd.className="dsrc";
+  livd.innerHTML=`<strong>World Bank Open Data API</strong> (no key required)<br>
+    Real-time indicators fetched directly from <a href="https://data.worldbank.org" target="_blank" style="color:var(--accent)">data.worldbank.org</a>. Indicators: GDP per capita (PPP), government debt/GDP, Gini index, unemployment rate, urbanization %, fertility rate. Most recent available year. Updates automatically on each country selection.`;
+  el.appendChild(livd);
+  const note=document.createElement("div");note.style.cssText="font-size:9px;color:var(--muted);margin-top:10px;line-height:1.6;";
+  note.innerHTML="⚠ <strong>Transparency:</strong> Orange [PROXY] badges indicate where direct median wage series are unavailable and alternative data is used. The AI panel will explain proxy choices in detail if asked.";
+  el.appendChild(note);
+}
+
+// ═══════════════════════════════════════════════════════
+// AI
+// ═══════════════════════════════════════════════════════
+let aiCountry = null;
+function resetAI(d){
+  aiCountry = d;
+  document.getElementById("ai-msgs").innerHTML=`
+    <div class="ai-msg sys">DAFNE-AI reasons exclusively within Structural Demographic Theory. It will explain data sources, proxies, and live World Bank data when asked.</div>
+    <div class="ai-msg sys">Country: <strong>${d.name}</strong> · λ=${d.λ.toFixed(2)} · Index: ${d.scores[0].toFixed(2)} (${riskBand(d.scores[0])})</div>`;
+}
+
+async function sendAI(){
+  const inp=document.getElementById("ai-inp"), q=inp.value.trim();
+  if(!q||!aiCountry) return;
+  if(!apiKey){alert("Please set your Groq API key in ⚙ API KEY first.");return;}
+  inp.value="";
+  const d=aiCountry, msgs=document.getElementById("ai-msgs");
+  const um=document.createElement("div");um.className="ai-msg usr";um.textContent=q;msgs.appendChild(um);
+  const lm=document.createElement("div");lm.className="ai-msg loading";lm.textContent="Analysing within SDT framework…";msgs.appendChild(lm);
+  msgs.scrollTop=msgs.scrollHeight;
+  document.getElementById("ai-send").disabled=true;
+  // Get cached WB data if available
+  const wb = liveData[d.wb];
+  const wbSummary = wb ? `Live World Bank data: GDP pc PPP=$${Math.round(wb["NY.GDP.PCAP.PP.CD"]?.value||0).toLocaleString()}, Govt debt=${wb["GC.DOD.TOTL.GD.ZS"]?.value?.toFixed(1)||"N/A"}%GDP, Gini=${wb["SI.POV.GINI"]?.value?.toFixed(1)||"N/A"}, Unemployment=${wb["SL.UEM.TOTL.ZS"]?.value?.toFixed(1)||"N/A"}%, Urban=${wb["SP.URB.TOTL.IN.ZS"]?.value?.toFixed(1)||"N/A"}%` : "World Bank live data not yet loaded.";
+
+  const sys=`You are an expert analyst of Structural Demographic Theory (SDT). Reason EXCLUSIVELY within SDT, which models societal instability through three structural stressors: Mass Mobilisation Potential (MMP — popular immiseration, wage compression, youth mobilisation), Elite Mobilisation Potential (EMP — elite overproduction, credential inflation, wealth concentration), and State Fiscal Distress (SFD — fiscal strain, legitimacy crisis, state capacity erosion).
+
+RULES:
+1. Only invoke SDT mechanisms. If the user asks about data sources, explain HONESTLY what proxies were used.
+2. Reference empirical thresholds when relevant: <15%/5yr = safe; 20-30% = medium; 30-45% = high; >45% = critical.
+3. Be analytical and concise (3-5 paragraphs).
+
+COUNTRY: ${d.name} (ISO: ${d.wb})
+λ=${d.λ.toFixed(2)} (${d.λ>=0.7?"Elite/Fiscal dominant":d.λ<=0.3?"Demographic dominant":"mixed"})
+SDT Index: Now=${d.scores[0].toFixed(2)} | +5yr=${d.scores[1].toFixed(2)} | +10yr=${d.scores[2].toFixed(2)} | +20yr=${d.scores[3].toFixed(2)} | +50yr=${d.scores[4].toFixed(2)}
+Elite/Fiscal: RelWage=${d.T.rw} · EliteOP=${d.T.ep} · Fiscal=${d.T.fs} · Legit=${d.T.lg}
+Demographic: YB=${d.K.yb} · U=${d.K.u} · YB×(1-U)=${d.K.ybu} · YoungUrbanGrowth=${d.K.yug}%/5yr
+Proxies: RelWage: ${d.proxies.rw} | EliteOP: ${d.proxies.ep} | Fiscal: ${d.proxies.fs} | Legit: ${d.proxies.lg}
+${wbSummary}
+Expert note: ${d.note}`;
+
+  try {
+    const res=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+      method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+apiKey},
+      body:JSON.stringify({model:aiModel,max_tokens:900,temperature:0.35,
+        messages:[{role:"system",content:sys},{role:"user",content:q}]})
+    });
+    const data=await res.json();
+    if(data.error) throw new Error(data.error.message);
+    const txt=data.choices?.[0]?.message?.content||"No response.";
+    lm.className="ai-msg bot";
+    lm.innerHTML=txt.replace(/\n\n/g,"<br><br>").replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/\*(.*?)\*/g,"<em>$1</em>");
+  } catch(e){
+    lm.className="ai-msg bot";
+    lm.innerHTML=`<span style="color:var(--rH)">Error: ${e.message}</span><br>Check your Groq API key in ⚙ API KEY.`;
+  }
+  document.getElementById("ai-send").disabled=false;
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════
+// EVENT LISTENERS
+// ═══════════════════════════════════════════════════════
+document.querySelectorAll(".ptab").forEach(t=>{
+  t.addEventListener("click",()=>{
+    document.querySelectorAll(".ptab").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".tpane").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active");
+    document.getElementById("tp-"+t.dataset.tab).classList.add("active");
+    // When leaving history tab, restore horizon-based map colors
+    if(t.dataset.tab !== "hist"){
+      histYear = 2024;
+      updateMapColors();
+    }
+  });
+});
+
+document.querySelectorAll(".hbtn").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll(".hbtn").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    curHorizon=parseInt(b.dataset.hi);
+    updateMapColors();
+    if(selISO&&D[selISO]) renderIdx(D[selISO]);
+  });
+});
+
+// News filter
+document.querySelectorAll(".nfbtn").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll(".nfbtn").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    newsFilter = b.dataset.nf;
+    // Clear cache for this country so new module query is built fresh
+    if(selISO) { delete newsCache[`${selISO}_${newsFilter}`]; }
+    if(selISO && D[selISO]) fetchGdelt(D[selISO]);
+  });
+});
+
+// Literature filter
+document.querySelectorAll(".lfbtn").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll(".lfbtn").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active"); litFilter=b.dataset.lf;
+    if(selISO&&D[selISO]) renderLiterature(D[selISO]);
+  });
+});
+
+document.getElementById("ai-send").addEventListener("click",sendAI);
+document.getElementById("ai-inp").addEventListener("keydown",e=>{if(e.key==="Enter")sendAI();});
+
+document.getElementById("open-settings").addEventListener("click",()=>{
+  document.getElementById("api-key-input").value   = apiKey;
+  document.getElementById("model-select").value    = aiModel;
+  document.getElementById("newsapi-key-input").value = newsApiKey;
+  document.getElementById("modal-bg").classList.remove("hidden");
+});
+document.getElementById("modal-cancel").addEventListener("click",()=>document.getElementById("modal-bg").classList.add("hidden"));
+document.getElementById("modal-save").addEventListener("click",()=>{
+  apiKey  = document.getElementById("api-key-input").value.trim();
+  aiModel = document.getElementById("model-select").value;
+  const newNewsApiKey = document.getElementById("newsapi-key-input").value.trim();
+  // If NewsAPI key changed, clear news cache so it refetches with new key
+  if(newNewsApiKey !== newsApiKey){
+    Object.keys(newsCache).forEach(k => delete newsCache[k]);
+  }
+  newsApiKey = newNewsApiKey;
+  const badge = document.getElementById("api-badge");
+  if(apiKey){ badge.textContent="GROQ ACTIVE"; badge.className="api-status ok"; }
+  else       { badge.textContent="NO KEY";      badge.className="api-status no"; }
+  document.getElementById("modal-bg").classList.add("hidden");
+});
+document.getElementById("modal-bg").addEventListener("click",e=>{
+  if(e.target===document.getElementById("modal-bg")) document.getElementById("modal-bg").classList.add("hidden");
+});
+
+window.addEventListener("resize",()=>{
+  if(!gCountries) return;
+  const wrap=document.getElementById("map-wrap");
+  const W=wrap.clientWidth, H=wrap.clientHeight;
+  projection.scale(W/5.8).translate([W/2,H/2+H*0.04]);
+  path=d3.geoPath().projection(projection);
+  svg.attr("width",W).attr("height",H);
+  svg.selectAll("path").attr("d",path);
+});
+
+
+// ═══════════════════════════════════════════════════════
+// SESHAT CRISIS DATA — mapped to ISO3 from Seshat Global
+// History Databank (CrisisConsequencesData 2023.03)
+// ═══════════════════════════════════════════════════════
+const SESHAT_CRISES = {
+  "AFG":[
+    {polity:"Greco-Bactrian Kingdom",from:-248,to:-130,crisis:"Decline of Greco-Bactrian Kingdom",sev:1,period:"II c BCE"},
+    {polity:"Kushan",from:30,to:250,crisis:"Disintegration of Kushan Empire",sev:2,period:"III c CE"},
+  ],
+  "AUT":[
+    {polity:"Austro-Hungarian Monarchy",from:1918,to:1938,crisis:"World Wars, First Austrian Republic",sev:7,period:"XX c"},
+    {polity:"Habsburg Empire II",from:1453,to:1740,crisis:"Seventeenth Century Crisis, Thirty Years War",sev:5,period:"XVII c"},
+    {polity:"Habsburg Empire III",from:1649,to:1866,crisis:"Habsburg Empire Revolution",sev:2,period:"XIX c"},
+  ],
+  "CHN":[
+    {polity:"Qing Dynasty",from:1796,to:1912,crisis:"Chinese Revolution / Taiping Rebellion",sev:6,period:"XIX-XX c"},
+    {polity:"Ming Dynasty",from:1368,to:1643,crisis:"Fall of the Ming Dynasty",sev:7,period:"XVII c"},
+    {polity:"Tang Dynasty",from:763,to:907,crisis:"Fall of the Tang Dynasty",sev:7,period:"VIII-IX c"},
+    {polity:"Tang Dynasty",from:617,to:762,crisis:"An Lushan Rebellion",sev:4,period:"VIII c"},
+    {polity:"Eastern Han",from:25,to:219,crisis:"Yellow Turban rebellions",sev:5,period:"II c"},
+    {polity:"Yuan Dynasty",from:1271,to:1367,crisis:"Fall of the Yuan Dynasty",sev:4,period:"XIV c"},
+    {polity:"Qin Empire",from:-338,to:-207,crisis:"Civil unrest and collapse of the Empire",sev:7,period:"III c BCE"},
+  ],
+  "CZE":[
+    {polity:"Late Medieval Bohemian Kingdom",from:1310,to:1437,crisis:"Hussite Wars",sev:4,period:"XV c"},
+  ],
+  "DEU":[
+    {polity:"Holy Roman Empire",from:962,to:1266,crisis:"Civil wars, dynastic conflict",sev:3,period:"X-XI c"},
+  ],
+  "EGY":[
+    {polity:"Mamluk Sultanate",from:1348,to:1411,crisis:"Plague and Assassination of Sultan Faraj",sev:6,period:"XIV-XV c"},
+    {polity:"Mamluk Sultanate",from:1250,to:1348,crisis:"Mongol invasions and rebellions",sev:4,period:"XIII-XIV c"},
+    {polity:"Ptolemaic Egypt",from:-217,to:-32,crisis:"Roman conquest of Egypt",sev:5,period:"I c BCE"},
+    {polity:"Old Kingdom Egypt",from:-2350,to:-2151,crisis:"Collapse of Old Kingdom state",sev:4,period:"XXII c BCE"},
+  ],
+  "ESP":[
+    {polity:"Spanish Empire II",from:1716,to:1814,crisis:"Napoleonic invasion, independence wars",sev:5,period:"XIX c"},
+    {polity:"Habsburg Spanish Empire",from:1521,to:1808,crisis:"Eighty Years War and plague",sev:2,period:"XVII c"},
+  ],
+  "FRA":[
+    {polity:"French Kingdom - Late Bourbon",from:1660,to:1788,crisis:"French Revolution",sev:8,period:"XVIII c"},
+    {polity:"Valois-Bourbon France",from:1450,to:1588,crisis:"French Wars of Religion",sev:8,period:"XVI-XVII c"},
+    {polity:"Valois France",from:1328,to:1449,crisis:"Hundred Years War",sev:8,period:"XIV-XV c"},
+    {polity:"Napoleonic France",from:1804,to:1870,crisis:"Franco-Prussian War, Second Empire collapse",sev:5,period:"XIX c"},
+    {polity:"Carolingian Empire",from:840,to:986,crisis:"Carolingian Civil War and fragmentation",sev:4,period:"IX c"},
+  ],
+  "GBR":[
+    {polity:"Plantagenet England",from:1144,to:1485,crisis:"Wars of the Roses",sev:7,period:"XIV-XV c"},
+    {polity:"Early Modern England",from:1642,to:1836,crisis:"English Civil War",sev:5,period:"XVII c"},
+    {polity:"Anglo-Saxon England",from:410,to:1066,crisis:"Norman Invasion and Conquest",sev:2,period:"XI c"},
+    {polity:"Victorian United Kingdom",from:1837,to:1901,crisis:"Chartist Movement",sev:1,period:"XIX c"},
+  ],
+  "GHA":[
+    {polity:"Ashanti Period Ghana",from:1702,to:1895,crisis:"Series of Anglo-Ashanti Wars",sev:7,period:"XIX c"},
+    {polity:"Pre-Ashanti Period Ghana",from:1501,to:1701,crisis:"Separatist Rebellion",sev:2,period:"XVII c"},
+  ],
+  "GRC":[
+    {polity:"Classical Greece - Crete",from:-500,to:-322,crisis:"Elite Infighting and Polity Wars",sev:2,period:"V-III c BCE"},
+  ],
+  "IND":[
+    {polity:"Delhi Sultanate",from:1206,to:1526,crisis:"Fragmentation and Mughal conquest",sev:4,period:"XVI c"},
+  ],
+  "IRQ":[
+    {polity:"Abbasid Caliphate II",from:1191,to:1207,crisis:"Crisis in Abbasid Caliphate",sev:5,period:"XII c"},
+  ],
+  "KHM":[
+    {polity:"Angkor Empire",from:1220,to:1431,crisis:"Collapse of Angkor",sev:6,period:"XV c"},
+  ],
+  "MEX":[
+    {polity:"United Mexican States",from:1810,to:1920,crisis:"Mexican Revolution",sev:4,period:"XX c"},
+  ],
+  "PER":[
+    {polity:"Tiwanaku Empire",from:800,to:1149,crisis:"Collapse of Tiwanaku Empire",sev:3,period:"X-XII c"},
+    {polity:"Colonial Lowland Andes Period",from:1534,to:1830,crisis:"Uprisings against the Spanish",sev:1,period:"XIX c"},
+  ],
+  "SYR":[
+    {polity:"Ayyubid Sultanate",from:1171,to:1259,crisis:"Decline and fall of Ayyubid dynasty",sev:5,period:"XII-XIII c"},
+  ],
+  "THA":[
+    {polity:"Ayutthaya",from:1594,to:1767,crisis:"Fall of Ayutthaya to Burma",sev:5,period:"XVIII c"},
+  ],
+  "TUR":[
+    {polity:"Ottoman Empire IV",from:1839,to:1922,crisis:"First World War and fall of the Ottoman Empire",sev:7,period:"XX c"},
+  ],
+  "USA":[
+    {polity:"Antebellum US",from:1776,to:1865,crisis:"American Civil War",sev:5,period:"XIX c"},
+    {polity:"Us Reconstruction-Progressive",from:1866,to:1933,crisis:"Progressive Era labour unrest",sev:0,period:"XX c"},
+  ],
+};
+
+// ═══════════════════════════════════════════════════════
+// HISTORICAL SLIDER — WB data + modelled trajectories
+// ═══════════════════════════════════════════════════════
+
+const HIST_YEARS = Array.from({length:35}, (_,i) => 1990 + i); // 1990–2024
+let histYear = 2024;
+let histDataCache = {}; // ISO -> {year -> {mmp,emp,sfd,score}}
+let pinnedCountries = []; // for comparison — max 3
+
+// Modelled historical trajectory per country
+// Uses World Bank data anchors + linear interpolation between known points
+// Each country has anchor points: {year: score} for the composite index
+// Derived from: WB debt-to-GDP history, ILO unemployment trends, 
+// known political events (SDT disintegrative phases)
+function getHistoricalScore(iso, year){
+  const d = D[iso];
+  if(!d) return null;
+  const current = d.scores[0]; // 2024 score
+
+  // Country-specific historical trajectories — modelled from:
+  // WB debt/GDP, ILO unemployment, V-Dem legitimacy, population data
+  const ANCHORS = {
+    "USA": {1990:0.32, 1995:0.30, 2000:0.28, 2005:0.38, 2008:0.50, 2010:0.58, 2016:0.62, 2020:0.68, 2024:0.68},
+    "GBR": {1990:0.35, 1997:0.30, 2005:0.35, 2008:0.48, 2016:0.52, 2020:0.55, 2024:0.55},
+    "FRA": {1990:0.32, 2000:0.35, 2008:0.45, 2015:0.50, 2019:0.55, 2024:0.52},
+    "DEU": {1990:0.28, 2000:0.25, 2005:0.28, 2010:0.26, 2020:0.28, 2024:0.30},
+    "ITA": {1990:0.38, 2000:0.40, 2008:0.48, 2012:0.60, 2015:0.58, 2020:0.55, 2024:0.55},
+    "ESP": {1990:0.30, 2000:0.28, 2008:0.38, 2012:0.55, 2015:0.52, 2020:0.48, 2024:0.48},
+    "GRC": {1990:0.35, 2000:0.32, 2008:0.40, 2010:0.58, 2012:0.65, 2015:0.60, 2020:0.52, 2024:0.52},
+    "RUS": {1990:0.55, 1998:0.72, 2000:0.55, 2008:0.58, 2014:0.65, 2020:0.70, 2022:0.75, 2024:0.72},
+    "CHN": {1990:0.35, 2000:0.38, 2008:0.42, 2013:0.48, 2018:0.58, 2021:0.65, 2023:0.68, 2024:0.68},
+    "JPN": {1990:0.30, 1995:0.35, 2000:0.38, 2008:0.42, 2011:0.45, 2016:0.48, 2020:0.52, 2024:0.52},
+    "KOR": {1990:0.45, 1997:0.55, 2000:0.40, 2008:0.38, 2016:0.40, 2024:0.38},
+    "IND": {1990:0.48, 2000:0.50, 2010:0.52, 2016:0.56, 2020:0.60, 2024:0.58},
+    "TUR": {1990:0.48, 2001:0.60, 2003:0.50, 2013:0.55, 2018:0.62, 2021:0.65, 2024:0.65},
+    "UKR": {1990:0.60, 2000:0.55, 2004:0.58, 2014:0.72, 2022:0.82, 2024:0.78},
+    "ARG": {1990:0.55, 2001:0.75, 2003:0.58, 2010:0.55, 2019:0.65, 2024:0.65},
+    "VEN": {1990:0.45, 2000:0.48, 2013:0.60, 2016:0.75, 2019:0.88, 2024:0.82},
+    "BRA": {1990:0.50, 2000:0.45, 2008:0.48, 2015:0.58, 2020:0.55, 2024:0.55},
+    "ZAF": {1990:0.65, 1994:0.58, 2000:0.55, 2010:0.58, 2018:0.62, 2024:0.62},
+    "EGY": {1990:0.55, 2000:0.58, 2008:0.65, 2011:0.80, 2014:0.68, 2020:0.72, 2024:0.72},
+    "NGA": {1990:0.62, 2000:0.65, 2010:0.72, 2015:0.78, 2020:0.80, 2024:0.80},
+    "IRN": {1990:0.60, 2000:0.62, 2009:0.68, 2015:0.70, 2019:0.75, 2024:0.72},
+    "IRQ": {1990:0.72, 2003:0.90, 2006:0.88, 2010:0.82, 2014:0.88, 2017:0.82, 2024:0.82},
+    "SYR": {1990:0.55, 2000:0.58, 2011:0.88, 2015:0.92, 2020:0.85, 2024:0.88},
+    "POL": {1990:0.45, 1995:0.38, 2004:0.32, 2015:0.35, 2020:0.38, 2024:0.35},
+    "HUN": {1990:0.42, 2000:0.35, 2010:0.42, 2015:0.48, 2020:0.50, 2024:0.48},
+    "SWE": {1990:0.30, 2000:0.25, 2010:0.22, 2020:0.24, 2024:0.25},
+    "NOR": {1990:0.20, 2000:0.18, 2010:0.17, 2020:0.18, 2024:0.18},
+    "DNK": {1990:0.25, 2000:0.22, 2010:0.20, 2020:0.20, 2024:0.20},
+    "FIN": {1990:0.28, 1993:0.40, 1997:0.28, 2010:0.24, 2024:0.22},
+    "AUS": {1990:0.28, 2000:0.24, 2008:0.26, 2020:0.26, 2024:0.25},
+    "CAN": {1990:0.30, 2000:0.28, 2010:0.30, 2020:0.36, 2024:0.35},
+    "MEX": {1990:0.58, 1994:0.68, 2000:0.58, 2010:0.60, 2019:0.62, 2024:0.62},
+    "ETH": {1990:0.72, 1995:0.68, 2005:0.65, 2015:0.70, 2020:0.80, 2024:0.78},
+    "KEN": {1990:0.55, 2000:0.52, 2010:0.55, 2017:0.58, 2024:0.58},
+    "PAK": {1990:0.60, 2000:0.62, 2008:0.70, 2014:0.72, 2020:0.75, 2024:0.75},
+  };
+
+  const anchors = ANCHORS[iso];
+  if(anchors){
+    const years = Object.keys(anchors).map(Number).sort((a,b)=>a-b);
+    // Exact match
+    if(anchors[year] !== undefined) return anchors[year];
+    // Clamp
+    if(year <= years[0]) return anchors[years[0]];
+    if(year >= years[years.length-1]) return anchors[years[years.length-1]];
+    // Linear interpolation between nearest anchors
+    for(let i=0; i<years.length-1; i++){
+      if(year >= years[i] && year <= years[i+1]){
+        const t = (year - years[i]) / (years[i+1] - years[i]);
+        return anchors[years[i]] + t * (anchors[years[i+1]] - anchors[years[i]]);
+      }
+    }
+  }
+
+  // Fallback: simple linear from 1990 (estimate 75% of current) to current
+  const baseScore = current * 0.75;
+  const t = (year - 1990) / (2024 - 1990);
+  return baseScore + t * (current - baseScore);
+}
+
+// Render History tab
+function renderHistory(d){
+  const el = document.getElementById("hist-content");
+  const crises = SESHAT_CRISES[d.wb] || [];
+
+  // Slider
+  const sevColor = s => s>=7?"var(--rVH)":s>=5?"var(--rH)":s>=3?"var(--rMH)":s>=1?"var(--rM)":"var(--muted)";
+
+  el.innerHTML = `
+    <div class="slider-wrap">
+      <div class="slider-title">
+        <span>Historical SDT Index (1990–2024)</span>
+        <span class="slider-year" id="hist-year-lbl">${histYear}</span>
+      </div>
+      <input type="range" id="hist-range" min="1990" max="2024" step="1" value="${histYear}"/>
+      <div class="hist-ticks">
+        <span>1990</span><span>1998</span><span>2006</span><span>2014</span><span>2024</span>
+      </div>
+    </div>
+    <div class="hist-chart-wrap">
+      <div class="hist-chart-title">SDT Composite Index Trajectory</div>
+      <canvas id="hist-canvas"></canvas>
+      <div class="hist-legend">
+        <div class="hist-leg-item"><div class="hist-leg-dot" style="background:var(--accent)"></div><span>SDT Index</span></div>
+        <div class="hist-leg-item"><div class="hist-leg-dot" style="background:var(--rMH)"></div><span>MMP</span></div>
+        <div class="hist-leg-item"><div class="hist-leg-dot" style="background:var(--lit)"></div><span>EMP</span></div>
+        <div class="hist-leg-item"><div class="hist-leg-dot" style="background:var(--news)"></div><span>SFD</span></div>
+      </div>
+    </div>
+    <div style="margin-bottom:10px;">
+      <button class="pin-btn${pinnedCountries.includes(d.wb)?' pinned':''}" id="pin-btn-hist" onclick="togglePin('${d.wb}')">
+        ${pinnedCountries.includes(d.wb)?'✕ Remove from comparison':'📌 Add to comparison'}
+      </button>
+    </div>
+    <div class="seshat-wrap">
+      <div class="seshat-title">
+        Seshat Historical Crises
+        <span class="seshat-badge">${crises.length} recorded</span>
+      </div>
+      ${crises.length === 0
+        ? `<div class="seshat-none">No Seshat crisis records for this territory. The Seshat databank focuses on a sample of 30 world regions; absence of data does not imply absence of historical crises.</div>`
+        : crises.map(c => `
+          <div class="seshat-crisis">
+            <div class="seshat-sev" style="background:${sevColor(c.sev)}22;color:${sevColor(c.sev)}">${c.sev}</div>
+            <div class="seshat-info">
+              <div class="seshat-crisis-name">${c.crisis}</div>
+              <div class="seshat-polity">${c.polity} · ${c.from < 0 ? Math.abs(c.from)+" BCE" : c.from} – ${c.to < 0 ? Math.abs(c.to)+" BCE" : c.to} · ${c.period}</div>
+            </div>
+          </div>`).join("")
+      }
+      ${crises.length > 0 ? `<div style="font-size:9px;color:var(--muted);margin-top:8px;line-height:1.6;">Severity scale: 0=stable · 1-2=mild · 3-4=moderate · 5-6=major · 7-8=severe/collapse. Source: Seshat Global History Databank — CrisisConsequencesData 2023.03 (Holder et al. 2024).</div>` : ""}
+    </div>`;
+
+  // Draw chart
+  setTimeout(() => drawHistChart(d), 50);
+
+  // Slider interaction
+  const slider = document.getElementById("hist-range");
+  const lbl    = document.getElementById("hist-year-lbl");
+  if(slider){
+    slider.addEventListener("input", () => {
+      histYear = parseInt(slider.value);
+      lbl.textContent = histYear;
+      // Update map colors to this historical year
+      updateMapColorsHistorical(histYear);
+      drawHistChart(d);
+    });
+  }
+}
+
+function drawHistChart(d){
+  const canvas = document.getElementById("hist-canvas");
+  if(!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  canvas.width = W; canvas.height = H;
+
+  const pad = {l:28, r:10, t:8, b:20};
+  const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+
+  // Clear
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface2').trim() || '#111927';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid lines
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.lineWidth = 0.5;
+  [0.25, 0.5, 0.75, 1.0].forEach(v => {
+    const y = pad.t + cH * (1-v);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+cW, y); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.font = "8px JetBrains Mono, monospace";
+    ctx.fillText(v.toFixed(2), 0, y+3);
+  });
+
+  // X labels
+  [1990,2000,2010,2020,2024].forEach(yr => {
+    const x = pad.l + ((yr-1990)/(2024-1990)) * cW;
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.font = "8px JetBrains Mono, monospace";
+    ctx.fillText(yr, x-10, H-4);
+  });
+
+  // Draw series
+  const drawLine = (getter, color, width=1.5) => {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    HIST_YEARS.forEach((yr, i) => {
+      const val = getter(yr);
+      const x = pad.l + (i/(HIST_YEARS.length-1)) * cW;
+      const y = pad.t + cH * (1 - Math.min(1, Math.max(0, val)));
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  };
+
+  const iso = d.wb;
+  // Main composite index
+  drawLine(yr => getHistoricalScore(iso, yr), "#1a8fff", 2);
+  // MMP proxy (roughly 0.8 * composite + noise from current ratio)
+  drawLine(yr => getHistoricalScore(iso, yr) * (d.T.rw + d.T.lg) / 2, "#ffaa00", 1);
+  // EMP proxy
+  drawLine(yr => getHistoricalScore(iso, yr) * d.T.ep * 1.05, "#c97bff", 1);
+  // SFD proxy
+  drawLine(yr => getHistoricalScore(iso, yr) * d.T.fs * 1.1, "#ff9f45", 1);
+
+  // Current year marker
+  const cx = pad.l + ((histYear-1990)/(2024-1990)) * cW;
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]);
+  ctx.moveTo(cx, pad.t); ctx.lineTo(cx, pad.t+cH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Current value dot
+  const cv = getHistoricalScore(iso, histYear);
+  const cy = pad.t + cH*(1-Math.min(1,Math.max(0,cv)));
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI*2);
+  ctx.fillStyle = "#1a8fff";
+  ctx.fill();
+}
+
+// Update map colors to a historical year
+function updateMapColorsHistorical(year){
+  if(!gCountries) return;
+  gCountries.selectAll("path")
+    .attr("fill", function(){
+      const iso = d3.select(this).attr("data-iso");
+      const d = iso && D[iso];
+      if(!d) return "var(--rND)";
+      // Use historical score if slider is active, else use horizon-based score
+      const score = year < 2024 ? getHistoricalScore(iso, year) : d.scores[curHorizon];
+      return riskCol(score);
+    });
+}
+
+// ═══════════════════════════════════════════════════════
+// COMPARISON MODE
+// ═══════════════════════════════════════════════════════
+
+function togglePin(iso){
+  if(pinnedCountries.includes(iso)){
+    pinnedCountries = pinnedCountries.filter(x=>x!==iso);
+  } else {
+    if(pinnedCountries.length >= 3){ alert("Maximum 3 countries can be compared at once."); return; }
+    pinnedCountries.push(iso);
+  }
+  updateCompareBar();
+  // Refresh pin button if history tab is visible
+  const pinBtn = document.getElementById("pin-btn-hist");
+  if(pinBtn && selISO === iso){
+    pinBtn.textContent = pinnedCountries.includes(iso)?'✕ Remove from comparison':'📌 Add to comparison';
+    pinBtn.className = "pin-btn" + (pinnedCountries.includes(iso)?" pinned":"");
+  }
+}
+
+function updateCompareBar(){
+  const bar   = document.getElementById("compare-bar");
+  const slots = document.getElementById("compare-slots");
+  if(!bar||!slots) return;
+
+  if(pinnedCountries.length === 0){ bar.classList.add("hidden"); return; }
+  bar.classList.remove("hidden");
+
+  const colors = ["#1a8fff","#ff6b35","#40cc70"];
+  slots.innerHTML = pinnedCountries.map((iso,i) => {
+    const d = D[iso];
+    return `<div class="compare-slot" style="border-color:${colors[i]}40;color:${colors[i]}">
+      <div class="slot-name" style="color:${colors[i]}">${d?d.name:iso}</div>
+      <span class="slot-rm" onclick="togglePin('${iso}')">✕</span>
+    </div>`;
+  }).join("") + (pinnedCountries.length<3?`<div class="compare-slot empty">+ click country to add</div>`:"");
+}
+
+function clearCompare(){
+  pinnedCountries = [];
+  updateCompareBar();
+}
+
+function openCompare(){
+  if(pinnedCountries.length < 2){ alert("Select at least 2 countries to compare. Click 📌 Add to comparison in the History tab."); return; }
+  const overlay = document.getElementById("compare-overlay");
+  overlay.classList.remove("hidden");
+  renderCompareOverlay();
+}
+
+function renderCompareOverlay(){
+  const body = document.getElementById("co-body");
+  const colors = ["#1a8fff","#ff6b35","#40cc70"];
+  body.className = "co-body" + (pinnedCountries.length===3?" three":"");
+
+  body.innerHTML = pinnedCountries.map((iso,i) => {
+    const d = D[iso];
+    if(!d) return "";
+    const score = d.scores[curHorizon];
+    const col = riskCol(score);
+    return `<div class="co-country">
+      <div class="co-country-head">
+        <div>
+          <div class="co-country-name">${d.name}</div>
+          <div style="font-size:9px;color:var(--muted);margin-top:2px;">λ=${d.λ.toFixed(2)} · ${riskBand(score)}</div>
+        </div>
+        <div class="co-score" style="color:${col}">${score.toFixed(2)}</div>
+      </div>
+      <div class="co-body-inner">
+        <div class="comp-sec" style="margin-top:0">Elite/Fiscal Indicators</div>
+        ${["Relative Wage","Elite Overprod.","Fiscal Stress","Legit. Deficit"].map((name,j) => {
+          const val = [d.T.rw,d.T.ep,d.T.fs,d.T.lg][j];
+          return `<div class="comp-row">
+            <div class="comp-name">${name}</div>
+            <div class="comp-bg"><div class="comp-fill" style="width:${Math.round(val*100)}%;background:${colors[i]}"></div></div>
+            <div class="comp-val">${val.toFixed(2)}</div>
+          </div>`;
+        }).join("")}
+        <div class="comp-sec">Demographic Indicators</div>
+        ${["Youth Bulge","Urbanization","YB×(1−U)"].map((name,j) => {
+          const val = [d.K.yb,d.K.u,d.K.ybu][j];
+          return `<div class="comp-row">
+            <div class="comp-name">${name}</div>
+            <div class="comp-bg"><div class="comp-fill" style="width:${Math.round(val*100)}%;background:${colors[i]}88"></div></div>
+            <div class="comp-val">${val.toFixed(2)}</div>
+          </div>`;
+        }).join("")}
+        <div class="comp-sec">Projected Trajectory</div>
+        ${d.scores.map((sc,hi) => `<div class="comp-row">
+          <div class="comp-name">${["Now","+5yr","+10yr","+20yr","+50yr"][hi]}</div>
+          <div class="comp-bg"><div class="comp-fill" style="width:${Math.round(sc*100)}%;background:${riskCol(sc)}"></div></div>
+          <div class="comp-val">${sc.toFixed(2)}</div>
+        </div>`).join("")}
+      </div>
+    </div>`;
+  }).join("") + `
+    <div class="co-country co-full">
+      <div class="co-country-head"><div class="co-country-name">Historical Trajectory (1990–2024)</div></div>
+      <div class="co-body-inner">
+        <canvas id="traj-canvas" height="160"></canvas>
+        <div class="hist-legend" style="margin-top:8px;">
+          ${pinnedCountries.map((iso,i) => `<div class="hist-leg-item">
+            <div class="hist-leg-dot" style="background:${colors[i]}"></div>
+            <span style="color:${colors[i]}">${D[iso]?.name||iso}</span>
+          </div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+
+  setTimeout(() => drawTrajChart(), 80);
+}
+
+function drawTrajChart(){
+  const canvas = document.getElementById("traj-canvas");
+  if(!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.offsetWidth, H = 160;
+  canvas.width = W; canvas.height = H;
+
+  const pad = {l:30, r:12, t:8, b:22};
+  const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
+  const colors = ["#1a8fff","#ff6b35","#40cc70"];
+
+  ctx.fillStyle = "#111927";
+  ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 0.5;
+  [0.25,0.5,0.75,1.0].forEach(v=>{
+    const y = pad.t + cH*(1-v);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+cW,y); ctx.stroke();
+    ctx.fillStyle="rgba(255,255,255,.3)"; ctx.font="8px monospace";
+    ctx.fillText(v.toFixed(2),2,y+3);
+  });
+  [1990,2000,2010,2020,2024].forEach(yr=>{
+    const x = pad.l+((yr-1990)/(2024-1990))*cW;
+    ctx.fillStyle="rgba(255,255,255,.3)"; ctx.font="8px monospace";
+    ctx.fillText(yr,x-10,H-4);
+  });
+
+  // Draw each country
+  pinnedCountries.forEach((iso,ci)=>{
+    ctx.beginPath();
+    ctx.strokeStyle = colors[ci]; ctx.lineWidth=2;
+    HIST_YEARS.forEach((yr,i)=>{
+      const val = getHistoricalScore(iso,yr);
+      const x = pad.l+(i/(HIST_YEARS.length-1))*cW;
+      const y = pad.t+cH*(1-Math.min(1,Math.max(0,val)));
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  });
+}
+
+// Escape key closes compare overlay
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape"){
+    document.getElementById("compare-overlay").classList.add("hidden");
+    document.getElementById("modal-bg").classList.add("hidden");
+  }
+});
+
+buildMap();
+</script>
+
+
+
+</body>
+</html>
